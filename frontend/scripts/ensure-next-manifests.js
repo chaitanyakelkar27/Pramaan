@@ -91,6 +91,35 @@ function mirrorFullNextDirToParent(localNextDir, parentNextDir) {
   }
 }
 
+function ensureRootNodeModulesAccess(cwd) {
+  const parentNodeModules = path.resolve(cwd, "..", "node_modules");
+  const localNodeModules = path.resolve(cwd, "node_modules");
+
+  if (fs.existsSync(parentNodeModules)) {
+    return;
+  }
+
+  if (!fs.existsSync(localNodeModules)) {
+    return;
+  }
+
+  try {
+    fs.symlinkSync(localNodeModules, parentNodeModules, "dir");
+    console.log("linked", parentNodeModules, "->", localNodeModules);
+    return;
+  } catch (_symlinkError) {
+    // If symlinking is restricted, provide minimal fallback for current traced path.
+  }
+
+  const localNextPkg = path.join(localNodeModules, "next");
+  const parentNextPkg = path.join(parentNodeModules, "next");
+  if (fs.existsSync(localNextPkg)) {
+    fs.mkdirSync(parentNodeModules, { recursive: true });
+    fs.cpSync(localNextPkg, parentNextPkg, { recursive: true, force: true });
+    console.log("mirrored", localNextPkg, "->", parentNextPkg);
+  }
+}
+
 function main() {
   const cwd = process.cwd();
   const localNextDir = path.join(cwd, ".next");
@@ -103,6 +132,7 @@ function main() {
     const parentNextDir = path.resolve(cwd, "..", ".next");
     mirrorFullNextDirToParent(localNextDir, parentNextDir);
     ensureManifestsInDir(parentNextDir, path.join(parentNextDir, "routes-manifest.json"));
+    ensureRootNodeModulesAccess(cwd);
   }
 }
 
