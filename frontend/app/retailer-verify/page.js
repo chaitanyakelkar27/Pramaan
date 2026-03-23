@@ -17,10 +17,12 @@ export default function RetailerVerifyPage() {
     const [demoLoading, setDemoLoading] = useState(false);
     const [demoSource, setDemoSource] = useState("");
     const [expectedSigner, setExpectedSigner] = useState("");
+    const [scanNonce, setScanNonce] = useState("");
 
     useEffect(() => {
         if (typeof window !== "undefined") {
             setBaseUrl(window.location.origin);
+            setScanNonce(ethers.utils.hexlify(ethers.utils.randomBytes(32)));
             const params = new URLSearchParams(window.location.search);
             const hashFromUrl = params.get("productHash") || "";
             if (hashFromUrl) {
@@ -53,7 +55,7 @@ export default function RetailerVerifyPage() {
     }, [normalizedSecret]);
 
     const verifyUrl = useMemo(() => {
-        if (!baseUrl || !trimmedHash || !normalizedSecret) {
+        if (!baseUrl || !trimmedHash || !normalizedSecret || !scanNonce) {
             return "";
         }
 
@@ -63,9 +65,15 @@ export default function RetailerVerifyPage() {
             "/verify/" +
             encodeURIComponent(trimmedHash) +
             "?secret=" +
-            encodeURIComponent(normalizedSecret)
+            encodeURIComponent(normalizedSecret) +
+            "&nonce=" +
+            encodeURIComponent(scanNonce)
         );
-    }, [baseUrl, trimmedHash, normalizedSecret]);
+    }, [baseUrl, trimmedHash, normalizedSecret, scanNonce]);
+
+    function regenerateNonce() {
+        setScanNonce(ethers.utils.hexlify(ethers.utils.randomBytes(32)));
+    }
 
     async function onCopyUrl() {
         if (!verifyUrl) {
@@ -240,6 +248,16 @@ export default function RetailerVerifyPage() {
                         onChange={(e) => setSecret(e.target.value)}
                         placeholder="Secret/private key used for provenance signer"
                     />
+
+                    <Input
+                        value={scanNonce}
+                        onChange={(e) => setScanNonce(e.target.value)}
+                        placeholder="Scan nonce (bytes32)"
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" onClick={regenerateNonce}>Regenerate Nonce</Button>
+                    </div>
 
                     {normalizedSecret && !secretSigner && (
                         <p className="m-0 text-sm text-[#8a1f1f]">Secret format is invalid. Use a valid EVM private key.</p>
