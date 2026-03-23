@@ -3,13 +3,19 @@ import Providers from "./providers";
 import "./globals.css";
 
 export const metadata = {
-  title: "Pramaan",
-  description: "Sovereign Traceability for Indian Craft"
+  title: "Pramaan - Sovereign Traceability for Indian Craft",
+  description: "Verify authenticity, prove origin, and receive fair royalties through privacy-preserving identity and on-chain provenance."
+};
+
+export const viewport = {
+  themeColor: "#1D9E75",
+  width: "device-width",
+  initialScale: 1
 };
 
 const navItems = [
   { href: "/artisan", label: "Artisan" },
-  { href: "/register-product", label: "Register Product" },
+  { href: "/register-product", label: "Register" },
   { href: "/verify", label: "Verify" },
   { href: "/transfer", label: "Transfer" }
 ];
@@ -17,48 +23,89 @@ const navItems = [
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, fontFamily: "Segoe UI, sans-serif" }}>
+      <body>
         <header
           style={{
             position: "sticky",
             top: 0,
             zIndex: 20,
-            background: "white",
-            borderBottom: "1px solid #dcebe5"
+            background: "var(--color-surface)",
+            borderBottom: "1px solid var(--color-border)"
           }}
         >
           <nav
             style={{
-              maxWidth: 1100,
+              maxWidth: "var(--container-max)",
               margin: "0 auto",
-              padding: "14px 20px",
+              padding: "var(--space-md) var(--space-xl)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              gap: 16,
-              flexWrap: "wrap"
+              gap: "var(--space-lg)",
+              flexWrap: "wrap",
+              minHeight: 56
             }}
           >
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <Link href="/" style={{ textDecoration: "none", color: "#1D9E75", fontWeight: 800, fontSize: 24 }}>
+            {/* Brand Section */}
+            <div 
+              style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "var(--space-md)",
+                flexShrink: 0
+              }}
+            >
+              <Link 
+                href="/" 
+                style={{ 
+                  textDecoration: "none", 
+                  color: "var(--color-primary)", 
+                  fontWeight: 800, 
+                  fontSize: 22,
+                  lineHeight: 1
+                }}
+                aria-label="Pramaan - Home"
+              >
                 Pramaan
               </Link>
-              <span style={{ color: "#466", fontSize: 13 }}>Sovereign Traceability for Indian Craft</span>
+              <span 
+                style={{ 
+                  color: "var(--color-text-secondary)", 
+                  fontSize: 13,
+                  display: "none"
+                }}
+                className="brand-tagline"
+              >
+                Sovereign Traceability
+              </span>
             </div>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+
+            {/* Navigation Links */}
+            <div 
+              style={{ 
+                display: "flex", 
+                gap: "var(--space-sm)", 
+                flexWrap: "wrap",
+                alignItems: "center"
+              }}
+              role="navigation"
+              aria-label="Main navigation"
+            >
               {navItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
                   style={{
                     textDecoration: "none",
-                    color: "#184f43",
-                    background: "#e8f5f1",
-                    border: "1px solid #c8e7dd",
-                    borderRadius: 999,
-                    padding: "8px 14px",
+                    color: "var(--color-primary-dark)",
+                    background: "var(--color-primary-light)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "var(--radius-full)",
+                    padding: "var(--space-sm) var(--space-md)",
                     fontSize: 14,
-                    fontWeight: 600
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    transition: "background-color 0.15s ease"
                   }}
                 >
                   {item.label}
@@ -67,9 +114,46 @@ export default function RootLayout({ children }) {
             </div>
           </nav>
         </header>
+
         <Providers>
-          <main style={{ maxWidth: 1100, margin: "0 auto", padding: "22px 20px 40px" }}>{children}</main>
+          <main 
+            style={{ 
+              maxWidth: "var(--container-max)", 
+              margin: "0 auto", 
+              padding: "var(--space-2xl) var(--space-xl) var(--space-4xl)"
+            }}
+          >
+            {children}
+          </main>
         </Providers>
+
+        <style jsx global>{`
+          @media (min-width: 768px) {
+            .brand-tagline {
+              display: inline !important;
+            }
+          }
+          
+          @media (max-width: 480px) {
+            nav {
+              padding: var(--space-sm) var(--space-md) !important;
+              gap: var(--space-sm) !important;
+            }
+            
+            nav > div:last-child {
+              width: 100%;
+              justify-content: center;
+            }
+            
+            nav > div:last-child a {
+              flex: 1;
+              text-align: center;
+              min-width: 0;
+              padding: var(--space-sm) var(--space-sm) !important;
+              font-size: 13px !important;
+            }
+          }
+        `}</style>
       </body>
     </html>
   );

@@ -1,10 +1,324 @@
 @import "tailwindcss";
 
+/* ===== Design System Tokens ===== */
+
 :root {
-    color-scheme: light;
+  /* Brand Colors */
+  --color-primary: #1D9E75;
+  --color-primary-dark: #18493c;
+  --color-primary-light: #e8f5f1;
+  
+  /* Neutral Colors */
+  --color-background: #f5efe3;
+  --color-surface: #ffffff;
+  --color-border: #d9ebe4;
+  --color-border-light: #e8f0ec;
+  
+  /* Text Colors */
+  --color-text-primary: #1f2937;
+  --color-text-secondary: #466;
+  --color-text-muted: #577;
+  
+  /* Status Colors */
+  --color-success: #16794d;
+  --color-success-bg: #ddf9eb;
+  --color-success-border: #9ed7bf;
+  
+  --color-warning: #8a5b09;
+  --color-warning-bg: #fff1d1;
+  --color-warning-border: #e7c09f;
+  
+  --color-error: #8a1f1f;
+  --color-error-bg: #ffe0e0;
+  --color-error-border: #e5b0b0;
+  
+  --color-info: #2f5a50;
+  --color-info-bg: #eff8f4;
+  --color-info-border: #b4d8cb;
+  
+  /* Spacing Scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+  --space-4xl: 40px;
+  
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+  --radius-full: 9999px;
+  
+  /* Typography */
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  
+  /* Sizing */
+  --input-height: 44px;
+  --button-height: 44px;
+  --container-max: 1100px;
+  --form-max: 560px;
+  --card-max: 760px;
+  
+  color-scheme: light;
 }
 
+/* ===== Base Styles ===== */
+
 body {
-    background-color: #f5efe3;
-    color: #1f2937;
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ===== Utility Classes ===== */
+
+/* Spacing */
+.section-gap { gap: var(--space-lg); }
+.card-gap { gap: var(--space-md); }
+.form-gap { gap: var(--space-md); }
+
+/* Container widths */
+.container-main {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-xl) var(--space-xl) var(--space-4xl);
+}
+
+.form-container {
+  max-width: var(--form-max);
+}
+
+.card-container {
+  max-width: var(--card-max);
+}
+
+/* Shared form elements */
+.input-base {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-md);
+  font-size: 14px;
+  min-height: var(--input-height);
+  box-sizing: border-box;
+  width: 100%;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input-base:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(29, 158, 117, 0.1);
+}
+
+.input-base::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* Shared button styles */
+.btn-base {
+  min-height: var(--button-height);
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  text-decoration: none;
+}
+
+.btn-base:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.btn-primary:disabled {
+  background: #9bc2b4;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-primary-light);
+}
+
+.btn-danger {
+  background: #a23b3b;
+  color: white;
+  border: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #8a2f2f;
+}
+
+.btn-demo {
+  background: #fff5f5;
+  color: var(--color-error);
+  border: 1px solid #e9bcbc;
+}
+
+.btn-demo:hover:not(:disabled) {
+  background: #ffecec;
+}
+
+/* Card styles */
+.card-base {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg);
+}
+
+.card-form {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-lg);
+  display: grid;
+  gap: var(--space-md);
+}
+
+/* Typography */
+.page-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.page-subtitle {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+/* Link styles */
+.link-primary {
+  color: #176f52;
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.link-primary:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* Status message containers */
+.status-text {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* Image preview */
+.image-preview {
+  width: 100%;
+  max-width: 360px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
+  display: block;
+}
+
+/* Flex utilities */
+.flex-wrap-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* Spinner animation */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border-light);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Focus visible for accessibility */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  :root {
+    --space-xl: 16px;
+    --space-2xl: 20px;
+  }
+  
+  .page-title {
+    font-size: 1.5rem;
+  }
 }

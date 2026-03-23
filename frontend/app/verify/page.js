@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPublicClient, http } from "viem";
 import { sepolia } from "viem/chains";
 import TerritorScore from "../../components/TerritorScore";
+import StatusMessage from "../../components/StatusMessage";
 import { getArtisan, getArtisanTokenId, verifyProduct } from "../../src/utils/contract";
 import { getIPFSUrl } from "../../src/utils/ipfs";
 import { PRODUCT_REGISTRY_ADDRESS, RPC_URL } from "../../src/utils/constants";
@@ -45,10 +46,19 @@ const publicClient = createPublicClient({
   transport: http(RPC_URL)
 });
 
+// User-friendly messages
+const MESSAGES = {
+  verifying: "Looking up this product on the blockchain...",
+  notFound: "This product has not been registered on Pramaan. If you believe this is an error, please contact the seller.",
+  authentic: "This product is verified authentic with a complete chain of custody.",
+  caution: "This product is registered, but some handlers in the supply chain could not be verified.",
+  compromised: "Warning: This product's authenticity cannot be guaranteed due to unverified custody events."
+};
+
 export default function VerifyPage() {
   const [hash, setHash] = useState("");
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState("");
+  const [message, setMessage] = useState({ type: "", text: "" });
   const [resultType, setResultType] = useState(RESULT.NONE);
   const [resultData, setResultData] = useState(null);
   const [autoVerified, setAutoVerified] = useState(false);
@@ -147,12 +157,12 @@ export default function VerifyPage() {
   async function runVerification(inputHash) {
     const cleanHash = String(inputHash || "").trim();
     if (!cleanHash) {
-      setStatus("Please enter a product hash.");
+      setMessage({ type: "warning", text: "Please enter a product hash to verify." });
       return;
     }
 
     setLoading(true);
-    setStatus("Reading verification from Sepolia...");
+    setMessage({ type: "progress", text: MESSAGES.verifying });
     setResultType(RESULT.NONE);
     setResultData(null);
 
@@ -168,7 +178,7 @@ export default function VerifyPage() {
 
       const handlerChain = [
         {
-          label: "Artisan",
+          label: "Artisan (Creator)",
           wallet: record.artisan,
           verified: true,
           timestamp: eventMeta.registrationTimestamp || Number(record.registeredAt)
@@ -204,17 +214,25 @@ export default function VerifyPage() {
         handlerChain,
         compromisedHandler
       });
-      setStatus("Verification complete.");
+      
+      // Set appropriate message based on result
+      if (type === RESULT.AUTHENTIC) {
+        setMessage({ type: "success", text: MESSAGES.authentic });
+      } else if (type === RESULT.CAUTION) {
+        setMessage({ type: "warning", text: MESSAGES.caution });
+      } else {
+        setMessage({ type: "error", text: MESSAGES.compromised });
+      }
     } catch (error) {
       const text = String(error?.shortMessage || error?.message || "").toLowerCase();
       if (text.includes("product not found") || text.includes("never been registered")) {
         setResultType(RESULT.NOT_FOUND);
         setResultData(null);
-        setStatus("This product has never been registered on Pramaan.");
+        setMessage({ type: "error", text: MESSAGES.notFound });
       } else {
         setResultType(RESULT.NONE);
         setResultData(null);
-        setStatus(error?.shortMessage || error?.message || "Verification failed.");
+        setMessage({ type: "error", text: error?.shortMessage || error?.message || "Could not verify this product. Please try again." });
       }
     } finally {
       setLoading(false);
@@ -233,28 +251,31 @@ export default function VerifyPage() {
 
     if (resultType === RESULT.AUTHENTIC) {
       return {
-        icon: "✓",
-        title: "AUTHENTIC PRODUCT",
-        color: "#16794d",
-        bg: "#ddf9eb"
+        icon: "check",
+        title: "Verified Authentic",
+        subtitle: "This product has a complete chain of custody",
+        color: "var(--color-success)",
+        bg: "var(--color-success-bg)"
       };
     }
 
     if (resultType === RESULT.CAUTION) {
       return {
-        icon: "!",
-        title: "CAUTION — CHAIN OF CUSTODY WEAKENED",
-        color: "#8a5b09",
-        bg: "#fff1d1"
+        icon: "warning",
+        title: "Authenticity Unconfirmed",
+        subtitle: "Some handlers in the supply chain could not be verified",
+        color: "var(--color-warning)",
+        bg: "var(--color-warning-bg)"
       };
     }
 
     if (resultType === RESULT.COMPROMISED) {
       return {
-        icon: "✕",
-        title: "COMPROMISED — AUTHENTICITY CANNOT BE GUARANTEED",
-        color: "#8a1f1f",
-        bg: "#ffe0e0"
+        icon: "x",
+        title: "Cannot Verify Authenticity",
+        subtitle: "The chain of custody has been broken",
+        color: "var(--color-error)",
+        bg: "var(--color-error-bg)"
       };
     }
 
@@ -262,157 +283,262 @@ export default function VerifyPage() {
   }, [resultType, resultData]);
 
   return (
-    <section style={{ display: "grid", gap: 16 }}>
-      <h1 style={{ margin: 0 }}>Verify Product</h1>
-      <p style={{ margin: 0, color: "#466" }}>Enter a product hash to verify authenticity and custody trail.</p>
+    <section style={{ display: "grid", gap: "var(--space-lg)" }}>
+      <div>
+        <h1 className="page-title">Verify Product</h1>
+        <p className="page-subtitle" style={{ marginTop: "var(--space-sm)" }}>
+          Check if a product is authentic and trace its complete history from the original artisan.
+        </p>
+      </div>
 
-      <form onSubmit={onVerify} style={formStyle}>
-        <input
-          suppressHydrationWarning
-          required
-          value={hash}
-          onChange={(e) => setHash(e.target.value)}
-          placeholder="0x..."
-          style={inputStyle}
-        />
-        <button suppressHydrationWarning disabled={loading} type="submit" style={buttonStyle}>
+      {/* Search Form */}
+      <form onSubmit={onVerify} className="card-form card-container">
+        <div>
+          <label htmlFor="product-hash" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600 }}>
+            Product Hash
+          </label>
+          <input
+            id="product-hash"
+            suppressHydrationWarning
+            required
+            value={hash}
+            onChange={(e) => setHash(e.target.value)}
+            placeholder="Enter the product hash (0x...)"
+            className="input-base"
+            style={{ fontFamily: "var(--font-mono)" }}
+          />
+        </div>
+        <button suppressHydrationWarning disabled={loading} type="submit" className="btn-base btn-primary" style={{ width: "fit-content" }}>
           {loading ? "Verifying..." : "Verify Product"}
         </button>
       </form>
 
-      {status && <p style={{ margin: 0, color: "#355" }}>{status}</p>}
-
-      {resultType === RESULT.NOT_FOUND && (
-        <div style={{ ...cardStyle, borderColor: "#e7d8d8", background: "#fff7f7" }}>
-          <p style={{ margin: 0, color: "#8a1f1f", fontWeight: 700 }}>
-            This product has never been registered on Pramaan.
-          </p>
+      {/* Status Message */}
+      {message.text && !resultData && (
+        <div className="card-container">
+          <StatusMessage type={message.type || "info"} message={message.text} />
         </div>
       )}
 
+      {/* Not Found State */}
+      {resultType === RESULT.NOT_FOUND && (
+        <div className="card-base card-container" style={{ borderColor: "var(--color-error-border)", background: "var(--color-error-bg)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "var(--color-error)",
+                color: "white",
+                flexShrink: 0
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M5 5L15 15M15 5L5 15" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div>
+              <h2 style={{ margin: 0, color: "var(--color-error)", fontSize: "1.25rem" }}>Product Not Found</h2>
+              <p style={{ margin: "var(--space-xs) 0 0", color: "var(--color-error)" }}>
+                {MESSAGES.notFound}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Results */}
       {resultData && resultHeader && (
         <>
-          <div style={{ ...cardStyle, background: resultHeader.bg, borderColor: resultHeader.color }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Result Header Card */}
+          <div className="card-base card-container" style={{ background: resultHeader.bg, borderColor: resultHeader.color }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-lg)" }}>
               <div
                 style={{
-                  width: 52,
-                  height: 52,
+                  width: 56,
+                  height: 56,
                   borderRadius: "50%",
-                  display: "grid",
-                  placeItems: "center",
-                  fontSize: 30,
-                  fontWeight: 800,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: resultHeader.color,
                   color: "white",
-                  background: resultHeader.color
+                  flexShrink: 0
                 }}
               >
-                {resultHeader.icon}
+                {resultHeader.icon === "check" && (
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 12L10 17L19 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+                {resultHeader.icon === "warning" && (
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 9V13M12 17H12.01" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="2"/>
+                  </svg>
+                )}
+                {resultHeader.icon === "x" && (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                  </svg>
+                )}
               </div>
-              <h2 style={{ margin: 0, color: resultHeader.color }}>{resultHeader.title}</h2>
+              <div>
+                <h2 style={{ margin: 0, color: resultHeader.color, fontSize: "1.5rem" }}>{resultHeader.title}</h2>
+                <p style={{ margin: "var(--space-xs) 0 0", color: resultHeader.color, opacity: 0.9 }}>
+                  {resultHeader.subtitle}
+                </p>
+              </div>
             </div>
           </div>
 
+          {/* Terroir Score */}
           <div style={{ maxWidth: 420 }}>
             <TerritorScore score={resultData.terroir} />
           </div>
 
+          {/* Warning Messages */}
           {resultType === RESULT.CAUTION && (
-            <div style={{ ...cardStyle, background: "#fff8e8", borderColor: "#e3c89a" }}>
-              <p style={{ margin: 0, color: "#8a5b09", fontWeight: 700 }}>
-                {resultData.unverifiedCount} unverified handlers detected in supply chain.
-              </p>
+            <div className="card-container">
+              <StatusMessage 
+                type="warning" 
+                title="Supply Chain Alert"
+                message={`${resultData.unverifiedCount} handler${resultData.unverifiedCount > 1 ? 's' : ''} in the supply chain could not be verified. This may affect product authenticity.`}
+              />
             </div>
           )}
 
           {resultType === RESULT.COMPROMISED && (
-            <div style={{ ...cardStyle, background: "#fff0f0", borderColor: "#e1b5b5" }}>
-              <p style={{ margin: 0, color: "#8a1f1f", fontWeight: 700 }}>
-                {resultData.compromisedHandler
-                  ? "Score dropped due to unverified handler: " + truncateAddress(resultData.compromisedHandler.wallet)
-                  : "Score dropped due to unverified custody events."}
-              </p>
+            <div className="card-container">
+              <StatusMessage 
+                type="error" 
+                title="Authenticity Warning"
+                message={resultData.compromisedHandler
+                  ? `The chain of custody was broken at handler ${truncateAddress(resultData.compromisedHandler.wallet)}. This product's authenticity cannot be guaranteed.`
+                  : "The chain of custody has been broken due to unverified custody events."}
+              />
             </div>
           )}
 
-          <div style={cardStyle}>
-            <h3 style={{ marginTop: 0 }}>Product Record</h3>
-            <p style={textStyle}>
-              Product: {resultData.record.productName} ({resultData.record.giTag})
-            </p>
-            <p style={textStyle}>Artisan: {resultData.artisan?.name || "Unknown"}</p>
-            <p style={textStyle}>Craft Type: {resultData.artisan?.craft || "Unknown"}</p>
-            <p style={textStyle}>SBT Token ID: {resultData.sbtId}</p>
-            <p style={textStyle}>Registered: {formatDate(resultData.record.registeredAt)}</p>
-            <p style={textStyle}>
-              Origin GPS: {resultData.regionLabel} ({(Number(resultData.record.origin_lat) / 1000000).toFixed(6)},
-              {(Number(resultData.record.origin_lng) / 1000000).toFixed(6)})
-            </p>
-            <p style={textStyle}>
-              IPFS Image:{" "}
-              <a
-                href={getIPFSUrl(resultData.record.ipfsCid)}
-                target="_blank"
-                rel="noreferrer"
-                style={linkStyle}
-              >
-                Open original image
-              </a>
-            </p>
-            {resultData.registrationTxHash && (
-              <p style={textStyle}>
-                Registration Tx:{" "}
+          {/* Product Details Card */}
+          <div className="card-base card-container">
+            <h3 style={{ margin: "0 0 var(--space-md)", color: "var(--color-primary-dark)" }}>Product Details</h3>
+            <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
+                <span style={{ fontWeight: 600, color: "var(--color-text-primary)", minWidth: 120 }}>Product:</span>
+                <span style={{ color: "var(--color-text-secondary)" }}>{resultData.record.productName} ({resultData.record.giTag})</span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
+                <span style={{ fontWeight: 600, color: "var(--color-text-primary)", minWidth: 120 }}>Artisan:</span>
+                <span style={{ color: "var(--color-text-secondary)" }}>{resultData.artisan?.name || "Unknown"}</span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
+                <span style={{ fontWeight: 600, color: "var(--color-text-primary)", minWidth: 120 }}>Craft Type:</span>
+                <span style={{ color: "var(--color-text-secondary)" }}>{resultData.artisan?.craft || "Unknown"}</span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
+                <span style={{ fontWeight: 600, color: "var(--color-text-primary)", minWidth: 120 }}>Artisan Token:</span>
+                <span style={{ color: "var(--color-text-secondary)" }}>#{resultData.sbtId}</span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
+                <span style={{ fontWeight: 600, color: "var(--color-text-primary)", minWidth: 120 }}>Registered:</span>
+                <span style={{ color: "var(--color-text-secondary)" }}>{formatDate(resultData.record.registeredAt)}</span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
+                <span style={{ fontWeight: 600, color: "var(--color-text-primary)", minWidth: 120 }}>Origin:</span>
+                <span style={{ color: "var(--color-text-secondary)" }}>
+                  {resultData.regionLabel} ({(Number(resultData.record.origin_lat) / 1000000).toFixed(6)}, {(Number(resultData.record.origin_lng) / 1000000).toFixed(6)})
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)", alignItems: "center" }}>
+                <span style={{ fontWeight: 600, color: "var(--color-text-primary)", minWidth: 120 }}>Original Image:</span>
                 <a
-                  href={"https://sepolia.etherscan.io/tx/" + resultData.registrationTxHash}
+                  href={getIPFSUrl(resultData.record.ipfsCid)}
                   target="_blank"
                   rel="noreferrer"
-                  style={linkStyle}
+                  className="link-primary"
                 >
-                  View on Etherscan
+                  View on IPFS
                 </a>
-              </p>
-            )}
+              </div>
+              {resultData.registrationTxHash && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)", alignItems: "center" }}>
+                  <span style={{ fontWeight: 600, color: "var(--color-text-primary)", minWidth: 120 }}>Transaction:</span>
+                  <a
+                    href={"https://sepolia.etherscan.io/tx/" + resultData.registrationTxHash}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="link-primary"
+                  >
+                    View on Etherscan
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div style={cardStyle}>
-            <h3 style={{ marginTop: 0 }}>Full Handler Chain</h3>
-            <div style={{ display: "grid", gap: 12 }}>
+          {/* Handler Chain Card */}
+          <div className="card-base card-container">
+            <h3 style={{ margin: "0 0 var(--space-lg)", color: "var(--color-primary-dark)" }}>Chain of Custody</h3>
+            <div style={{ display: "grid", gap: "var(--space-md)" }}>
               {resultData.handlerChain.map((node, index) => (
-                <div key={index} style={{ display: "grid", gridTemplateColumns: "24px 1fr", gap: 10 }}>
-                  <div style={{ display: "grid", justifyItems: "center" }}>
+                <div key={index} style={{ display: "flex", gap: "var(--space-md)" }}>
+                  {/* Timeline indicator */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 24 }}>
                     <div
                       style={{
-                        width: 12,
-                        height: 12,
+                        width: 14,
+                        height: 14,
                         borderRadius: "50%",
-                        background: node.verified ? "#1d9e75" : "#c53d3d",
-                        marginTop: 4
+                        background: node.verified ? "var(--color-success)" : "var(--color-error)",
+                        flexShrink: 0
                       }}
                     />
                     {index < resultData.handlerChain.length - 1 && (
-                      <div style={{ width: 2, height: 36, background: "#d5e6e0", marginTop: 2 }} />
+                      <div style={{ width: 2, flex: 1, background: "var(--color-border)", marginTop: 4 }} />
                     )}
                   </div>
-                  <div style={{ background: "#f8fcfb", border: "1px solid #dcebe5", borderRadius: 10, padding: 10 }}>
-                    <div style={{ fontWeight: 700, color: "#284f46" }}>{node.label}</div>
-                    <div style={{ color: "#466", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                      {truncateAddress(node.wallet)}
-                    </div>
-                    <div style={{ color: "#577" }}>{node.timestamp ? formatDate(node.timestamp) : "Timestamp unavailable"}</div>
-                    <div
-                      style={{
-                        marginTop: 4,
-                        display: "inline-block",
-                        borderRadius: 999,
-                        padding: "2px 8px",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        background: node.verified ? "#def4e9" : "#ffe2e2",
-                        color: node.verified ? "#1a6f50" : "#8a1f1f",
-                        border: "1px solid " + (node.verified ? "#9ed7bf" : "#e5b0b0")
-                      }}
-                    >
-                      {node.verified ? "Verified" : "Unverified"}
+                  
+                  {/* Handler info */}
+                  <div 
+                    style={{ 
+                      flex: 1,
+                      background: node.verified ? "#f8fcfb" : "#fff8f8",
+                      border: `1px solid ${node.verified ? "var(--color-border)" : "var(--color-error-border)"}`,
+                      borderRadius: "var(--radius-lg)",
+                      padding: "var(--space-md)"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-sm)" }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: "var(--color-primary-dark)" }}>{node.label}</div>
+                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--color-text-muted)", marginTop: 2 }}>
+                          {truncateAddress(node.wallet)}
+                        </div>
+                        <div style={{ fontSize: 13, color: "var(--color-text-muted)", marginTop: 2 }}>
+                          {node.timestamp ? formatDate(node.timestamp) : "Timestamp unavailable"}
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          borderRadius: "var(--radius-full)",
+                          padding: "4px 10px",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          background: node.verified ? "var(--color-success-bg)" : "var(--color-error-bg)",
+                          color: node.verified ? "var(--color-success)" : "var(--color-error)",
+                          border: `1px solid ${node.verified ? "var(--color-success-border)" : "var(--color-error-border)"}`
+                        }}
+                      >
+                        {node.verified ? "Verified" : "Unverified"}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -420,13 +546,14 @@ export default function VerifyPage() {
             </div>
           </div>
 
-          <div style={cardStyle}>
-            <h3 style={{ marginTop: 0 }}>Terroir Score Demo</h3>
-            <p style={{ margin: 0, color: "#466" }}>
-              Transfer this product through an unverified wallet to see the score drop.
+          {/* Actions Card */}
+          <div className="card-base card-container">
+            <h3 style={{ margin: "0 0 var(--space-sm)", color: "var(--color-primary-dark)" }}>Try the Demo</h3>
+            <p style={{ margin: "0 0 var(--space-md)", color: "var(--color-text-secondary)" }}>
+              Transfer this product through an unverified wallet to see how the authenticity score changes.
             </p>
-            <Link href={"/transfer?hash=" + resultData.hash} style={linkButtonStyle}>
-              Go to Transfer Demo
+            <Link href={"/transfer?hash=" + resultData.hash} className="btn-base btn-primary" style={{ width: "fit-content" }}>
+              Transfer This Product
             </Link>
           </div>
         </>
@@ -434,61 +561,3 @@ export default function VerifyPage() {
     </section>
   );
 }
-
-const formStyle = {
-  display: "grid",
-  gap: 10,
-  maxWidth: 680,
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14
-};
-
-const inputStyle = {
-  border: "1px solid #cfe2db",
-  borderRadius: 8,
-  padding: "10px 12px",
-  fontSize: 14
-};
-
-const buttonStyle = {
-  background: "#1D9E75",
-  color: "white",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content"
-};
-
-const textStyle = { margin: "4px 0", color: "#355" };
-
-const cardStyle = {
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14,
-  maxWidth: 760
-};
-
-const linkStyle = {
-  color: "#176f52",
-  fontWeight: 700,
-  textDecoration: "none"
-};
-
-const linkButtonStyle = {
-  marginTop: 10,
-  background: "#1D9E75",
-  color: "white",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content",
-  textDecoration: "none",
-  display: "inline-block"
-};

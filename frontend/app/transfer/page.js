@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPublicClient, http } from "viem";
 import { sepolia } from "viem/chains";
 import TerritorScore from "../../components/TerritorScore";
+import StatusMessage, { ProgressSteps } from "../../components/StatusMessage";
 import {
   approveEscrowForToken,
   confirmEscrowReceived,
@@ -25,12 +26,38 @@ const publicClient = createPublicClient({
   transport: http(RPC_URL)
 });
 
+// User-friendly messages
+const MESSAGES = {
+  loadingProduct: "Loading product details from the blockchain...",
+  productLoaded: "Product loaded successfully.",
+  productNotFound: "Could not find this product. Please check the hash and try again.",
+  resolvingAddress: "Resolving wallet address...",
+  invalidAddress: "Please enter a valid wallet address (0x...) or ENS name.",
+  ensResolved: "ENS name resolved successfully.",
+  ensFailed: "Could not resolve this ENS name. Please check the spelling or use a wallet address instead.",
+  transferring: "Transferring ownership and processing artisan royalty payment...",
+  transferSuccess: "Ownership transferred successfully! The artisan has received their royalty payment.",
+  transferFailed: "Could not complete the transfer. Please try again.",
+  escrowCreating: "Creating secure escrow and locking buyer funds...",
+  escrowCreated: "Escrow created successfully. The seller should now approve their token and mark it as shipped.",
+  escrowApproving: "Approving escrow contract to transfer your token...",
+  escrowApproved: "Token approved for escrow.",
+  escrowShipping: "Recording shipment on the blockchain...",
+  escrowShipped: "Item marked as shipped. The buyer can now confirm receipt.",
+  escrowConfirming: "Confirming delivery and releasing funds to seller...",
+  escrowCompleted: "Transaction complete! Funds have been released and the product has been transferred.",
+  escrowCancelling: "Cancelling escrow and refunding buyer...",
+  escrowCancelled: "Escrow cancelled. Funds have been returned to the buyer.",
+  disputeRaising: "Recording dispute on the blockchain...",
+  disputeRaised: "Dispute has been recorded. An arbitrator will review this case."
+};
+
 export default function TransferPage() {
   const [hash, setHash] = useState("");
   const [recordState, setRecordState] = useState(null);
-  const [status, setStatus] = useState("");
+  const [message, setMessage] = useState({ type: "", text: "" });
   const [loading, setLoading] = useState(false);
-  const [stepProgress, setStepProgress] = useState("");
+  const [currentStep, setCurrentStep] = useState(-1);
 
   const [newOwnerInput, setNewOwnerInput] = useState("");
   const [resolvedAddress, setResolvedAddress] = useState("");
@@ -44,10 +71,15 @@ export default function TransferPage() {
   const [escrowSeller, setEscrowSeller] = useState("");
   const [escrowAmountEth, setEscrowAmountEth] = useState("0.05");
   const [escrowId, setEscrowId] = useState("");
-  const [escrowDisputeReason, setEscrowDisputeReason] = useState("Buyer raised dispute");
+  const [escrowDisputeReason, setEscrowDisputeReason] = useState("Item not as described");
   const [escrowLoading, setEscrowLoading] = useState(false);
-  const [escrowStatusText, setEscrowStatusText] = useState("");
+  const [escrowMessage, setEscrowMessage] = useState({ type: "", text: "" });
   const [escrowData, setEscrowData] = useState(null);
+
+  const transferSteps = [
+    "Transferring ownership",
+    "Processing artisan royalty"
+  ];
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -116,21 +148,21 @@ export default function TransferPage() {
   async function loadProduct(inputHash) {
     const clean = String(inputHash || "").trim();
     if (!clean) {
-      setStatus("Enter a product hash.");
+      setMessage({ type: "warning", text: "Please enter a product hash." });
       return;
     }
 
     setLoading(true);
-    setStatus("Loading product from Sepolia...");
+    setMessage({ type: "progress", text: MESSAGES.loadingProduct });
     setTransferSuccess(null);
 
     try {
       const data = await verifyProduct(clean);
       setRecordState(data);
-      setStatus("Product loaded.");
+      setMessage({ type: "success", text: MESSAGES.productLoaded });
     } catch (error) {
       setRecordState(null);
-      setStatus(error?.shortMessage || error?.message || "Could not load product.");
+      setMessage({ type: "error", text: error?.shortMessage || error?.message || MESSAGES.productNotFound });
     } finally {
       setLoading(false);
     }
@@ -153,19 +185,19 @@ export default function TransferPage() {
         const ensAddress = await publicClient.getEnsAddress({ name: text });
         if (ensAddress) {
           candidate = ensAddress;
-          setEnsInfo("ENS resolved to " + ensAddress);
+          setEnsInfo(MESSAGES.ensResolved + " (" + truncateAddress(ensAddress) + ")");
         } else {
-          setEnsInfo("ENS name could not be resolved on this network.");
+          setEnsInfo(MESSAGES.ensFailed);
           return;
         }
       } catch (_error) {
-        setEnsInfo("ENS resolution failed on this network.");
+        setEnsInfo(MESSAGES.ensFailed);
         return;
       }
     }
 
     if (!candidate.startsWith("0x") || candidate.length !== 42) {
-      setEnsInfo("Invalid wallet address format.");
+      setEnsInfo(MESSAGES.invalidAddress);
       return;
     }
 
@@ -185,19 +217,20 @@ export default function TransferPage() {
     event.preventDefault();
 
     if (!hash || !recordState?.record) {
-      setStatus("Load a valid product hash first.");
+      setMessage({ type: "warning", text: "Please load a product first." });
       return;
     }
 
     const targetAddress = resolvedAddress || newOwnerInput.trim();
     if (!targetAddress || !targetAddress.startsWith("0x") || targetAddress.length !== 42) {
-      setStatus("Please provide a valid new owner wallet address or resolvable ENS.");
+      setMessage({ type: "warning", text: MESSAGES.invalidAddress });
       return;
     }
 
     setLoading(true);
     setTransferSuccess(null);
-    setStepProgress("Step 1/2: Transferring ownership...");
+    setCurrentStep(0);
+    setMessage({ type: "progress", text: MESSAGES.transferring });
 
     try {
       const transferNumber = Number(recordState.record.transferCount || 0) + 1;
@@ -207,7 +240,7 @@ export default function TransferPage() {
 
       const receipt = await transferProduct(hash.trim(), targetAddress, paymentEth);
 
-      setStepProgress("Step 2/2: Artisan royalty payment sent automatically...");
+      setCurrentStep(1);
 
       const refreshed = await verifyProduct(hash.trim());
       setRecordState(refreshed);
@@ -226,20 +259,20 @@ export default function TransferPage() {
         newTerroir: refreshed.terroir,
         artisanPaymentEth: artisanPayment.toFixed(6)
       });
-      setStatus("Transfer completed successfully.");
+      setMessage({ type: "success", text: MESSAGES.transferSuccess });
     } catch (error) {
-      setStatus(error?.shortMessage || error?.message || "Transfer failed.");
+      setMessage({ type: "error", text: error?.shortMessage || error?.message || MESSAGES.transferFailed });
     } finally {
       setLoading(false);
-      setStepProgress("");
+      setCurrentStep(-1);
     }
   }
 
   function getEscrowStatusLabel(status) {
     const labels = {
-      0: "None",
-      1: "Created",
-      2: "Shipped",
+      0: "Not Started",
+      1: "Created - Awaiting Shipment",
+      2: "Shipped - Awaiting Delivery",
       3: "Completed",
       4: "Refunded",
       5: "Disputed",
@@ -248,10 +281,23 @@ export default function TransferPage() {
     return labels[Number(status)] || "Unknown";
   }
 
+  function getEscrowStatusType(status) {
+    const types = {
+      0: "info",
+      1: "warning",
+      2: "info",
+      3: "success",
+      4: "warning",
+      5: "error",
+      6: "success"
+    };
+    return types[Number(status)] || "info";
+  }
+
   async function loadEscrow(idValue) {
     const id = Number(idValue);
     if (!Number.isFinite(id) || id <= 0) {
-      setEscrowStatusText("Provide a valid escrow ID.");
+      setEscrowMessage({ type: "warning", text: "Please enter a valid escrow ID." });
       return;
     }
 
@@ -259,10 +305,10 @@ export default function TransferPage() {
     try {
       const details = await getEscrowDetails(id);
       setEscrowData(details);
-      setEscrowStatusText("Escrow details loaded.");
+      setEscrowMessage({ type: "success", text: "Escrow details loaded." });
     } catch (error) {
       setEscrowData(null);
-      setEscrowStatusText(error?.shortMessage || error?.message || "Could not load escrow details.");
+      setEscrowMessage({ type: "error", text: error?.shortMessage || error?.message || "Could not load escrow details." });
     } finally {
       setEscrowLoading(false);
     }
@@ -272,13 +318,13 @@ export default function TransferPage() {
     event.preventDefault();
 
     if (!escrowTokenId || !escrowSeller) {
-      setEscrowStatusText("Token ID and seller are required.");
+      setEscrowMessage({ type: "warning", text: "Please enter a token ID and seller address." });
       return;
     }
 
     setEscrowLoading(true);
     setEscrowData(null);
-    setEscrowStatusText("Creating escrow and locking buyer funds...");
+    setEscrowMessage({ type: "progress", text: MESSAGES.escrowCreating });
 
     try {
       const { receipt, escrowId: createdEscrowId } = await createEscrowSale(
@@ -288,25 +334,16 @@ export default function TransferPage() {
       );
 
       setEscrowId(String(createdEscrowId));
-      setEscrowStatusText(
-        "Escrow created (ID " +
-        createdEscrowId +
-        "). Seller must approve token to escrow contract and mark shipped."
-      );
 
       await loadEscrow(createdEscrowId);
 
       const txHash = receipt?.transactionHash || receipt?.hash || "";
-      if (txHash) {
-        setEscrowStatusText(
-          "Escrow created (ID " +
-          createdEscrowId +
-          "). Etherscan: https://sepolia.etherscan.io/tx/" +
-          txHash
-        );
-      }
+      setEscrowMessage({
+        type: "success",
+        text: MESSAGES.escrowCreated + (txHash ? " View transaction: " + txHash.slice(0, 10) + "..." : "")
+      });
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Escrow creation failed.");
+      setEscrowMessage({ type: "error", text: error?.shortMessage || error?.message || "Could not create escrow." });
     } finally {
       setEscrowLoading(false);
     }
@@ -314,17 +351,17 @@ export default function TransferPage() {
 
   async function onApproveTokenForEscrow() {
     if (!escrowTokenId) {
-      setEscrowStatusText("Enter token ID to approve.");
+      setEscrowMessage({ type: "warning", text: "Please enter a token ID." });
       return;
     }
 
     setEscrowLoading(true);
-    setEscrowStatusText("Approving escrow contract for token transfer...");
+    setEscrowMessage({ type: "progress", text: MESSAGES.escrowApproving });
     try {
       await approveEscrowForToken(Number(escrowTokenId));
-      setEscrowStatusText("Token approved for escrow contract.");
+      setEscrowMessage({ type: "success", text: MESSAGES.escrowApproved });
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Approval failed.");
+      setEscrowMessage({ type: "error", text: error?.shortMessage || error?.message || "Could not approve token." });
     } finally {
       setEscrowLoading(false);
     }
@@ -332,18 +369,18 @@ export default function TransferPage() {
 
   async function onMarkShipped() {
     if (!escrowId) {
-      setEscrowStatusText("Enter escrow ID.");
+      setEscrowMessage({ type: "warning", text: "Please enter an escrow ID." });
       return;
     }
 
     setEscrowLoading(true);
-    setEscrowStatusText("Marking escrow as shipped...");
+    setEscrowMessage({ type: "progress", text: MESSAGES.escrowShipping });
     try {
       await markEscrowShipped(Number(escrowId));
       await loadEscrow(escrowId);
-      setEscrowStatusText("Escrow marked as shipped.");
+      setEscrowMessage({ type: "success", text: MESSAGES.escrowShipped });
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Could not mark shipped.");
+      setEscrowMessage({ type: "error", text: error?.shortMessage || error?.message || "Could not mark as shipped." });
     } finally {
       setEscrowLoading(false);
     }
@@ -351,18 +388,18 @@ export default function TransferPage() {
 
   async function onConfirmEscrow() {
     if (!escrowId) {
-      setEscrowStatusText("Enter escrow ID.");
+      setEscrowMessage({ type: "warning", text: "Please enter an escrow ID." });
       return;
     }
 
     setEscrowLoading(true);
-    setEscrowStatusText("Confirming delivery and releasing escrow funds...");
+    setEscrowMessage({ type: "progress", text: MESSAGES.escrowConfirming });
     try {
       await confirmEscrowReceived(Number(escrowId));
       await loadEscrow(escrowId);
-      setEscrowStatusText("Escrow completed. Funds settled and NFT transferred.");
+      setEscrowMessage({ type: "success", text: MESSAGES.escrowCompleted });
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Could not confirm receipt.");
+      setEscrowMessage({ type: "error", text: error?.shortMessage || error?.message || "Could not confirm receipt." });
     } finally {
       setEscrowLoading(false);
     }
@@ -370,18 +407,18 @@ export default function TransferPage() {
 
   async function onCancelEscrow() {
     if (!escrowId) {
-      setEscrowStatusText("Enter escrow ID.");
+      setEscrowMessage({ type: "warning", text: "Please enter an escrow ID." });
       return;
     }
 
     setEscrowLoading(true);
-    setEscrowStatusText("Attempting escrow cancellation...");
+    setEscrowMessage({ type: "progress", text: MESSAGES.escrowCancelling });
     try {
       await cancelEscrowExpired(Number(escrowId));
       await loadEscrow(escrowId);
-      setEscrowStatusText("Escrow cancelled and refunded.");
+      setEscrowMessage({ type: "success", text: MESSAGES.escrowCancelled });
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Could not cancel escrow.");
+      setEscrowMessage({ type: "error", text: error?.shortMessage || error?.message || "Could not cancel escrow." });
     } finally {
       setEscrowLoading(false);
     }
@@ -389,18 +426,18 @@ export default function TransferPage() {
 
   async function onRaiseDispute() {
     if (!escrowId) {
-      setEscrowStatusText("Enter escrow ID.");
+      setEscrowMessage({ type: "warning", text: "Please enter an escrow ID." });
       return;
     }
 
     setEscrowLoading(true);
-    setEscrowStatusText("Raising escrow dispute...");
+    setEscrowMessage({ type: "progress", text: MESSAGES.disputeRaising });
     try {
       await raiseEscrowDispute(Number(escrowId), escrowDisputeReason);
       await loadEscrow(escrowId);
-      setEscrowStatusText("Dispute raised. Await arbitrator resolution.");
+      setEscrowMessage({ type: "warning", text: MESSAGES.disputeRaised });
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Could not raise dispute.");
+      setEscrowMessage({ type: "error", text: error?.shortMessage || error?.message || "Could not raise dispute." });
     } finally {
       setEscrowLoading(false);
     }
@@ -428,251 +465,368 @@ export default function TransferPage() {
   }));
 
   return (
-    <section style={{ display: "grid", gap: 16 }}>
-      <h1 style={{ margin: 0 }}>Transfer Product Ownership</h1>
-      <p style={{ margin: 0, color: "#466" }}>Transfer ownership with quadratic royalty and terroir impact preview.</p>
+    <section style={{ display: "grid", gap: "var(--space-lg)" }}>
+      <div>
+        <h1 className="page-title">Transfer Product</h1>
+        <p className="page-subtitle" style={{ marginTop: "var(--space-sm)" }}>
+          Transfer ownership with automatic artisan royalty payments. You can use direct transfer or secure escrow.
+        </p>
+      </div>
 
-      <form onSubmit={onCreateEscrow} style={formStyle}>
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Escrow Transfer (Recommended)</h3>
-        <p style={{ margin: "0 0 8px", color: "#466" }}>
-          Buyer creates escrow, seller marks shipped, buyer confirms delivery to release funds and transfer NFT.
+      {/* Escrow Section */}
+      <div className="card-form card-container">
+        <h3 style={{ margin: 0, color: "var(--color-primary-dark)" }}>Secure Escrow Transfer</h3>
+        <p style={{ margin: 0, color: "var(--color-text-secondary)", fontSize: 14 }}>
+          Recommended for high-value items. Buyer funds are held securely until delivery is confirmed.
         </p>
 
-        <input
-          suppressHydrationWarning
-          required
-          type="number"
-          min="1"
-          value={escrowTokenId}
-          onChange={(e) => setEscrowTokenId(e.target.value)}
-          placeholder="NFT Token ID"
-          style={inputStyle}
-        />
+        <form onSubmit={onCreateEscrow} style={{ display: "grid", gap: "var(--space-md)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-md)" }}>
+            <div>
+              <label htmlFor="escrow-token" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600, fontSize: 14 }}>
+                NFT Token ID
+              </label>
+              <input
+                id="escrow-token"
+                suppressHydrationWarning
+                required
+                type="number"
+                min="1"
+                value={escrowTokenId}
+                onChange={(e) => setEscrowTokenId(e.target.value)}
+                placeholder="e.g., 1"
+                className="input-base"
+              />
+            </div>
+            <div>
+              <label htmlFor="escrow-amount" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600, fontSize: 14 }}>
+                Amount (ETH)
+              </label>
+              <input
+                id="escrow-amount"
+                suppressHydrationWarning
+                required
+                type="number"
+                min="0.0001"
+                step="0.0001"
+                value={escrowAmountEth}
+                onChange={(e) => setEscrowAmountEth(e.target.value)}
+                placeholder="0.05"
+                className="input-base"
+              />
+            </div>
+          </div>
 
-        <input
-          suppressHydrationWarning
-          required
-          value={escrowSeller}
-          onChange={(e) => setEscrowSeller(e.target.value)}
-          placeholder="Seller wallet (0x...)"
-          style={inputStyle}
-        />
+          <div>
+            <label htmlFor="escrow-seller" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600, fontSize: 14 }}>
+              Seller Wallet Address
+            </label>
+            <input
+              id="escrow-seller"
+              suppressHydrationWarning
+              required
+              value={escrowSeller}
+              onChange={(e) => setEscrowSeller(e.target.value)}
+              placeholder="0x..."
+              className="input-base"
+              style={{ fontFamily: "var(--font-mono)" }}
+            />
+          </div>
 
-        <input
-          suppressHydrationWarning
-          required
-          type="number"
-          min="0.0001"
-          step="0.0001"
-          value={escrowAmountEth}
-          onChange={(e) => setEscrowAmountEth(e.target.value)}
-          placeholder="Escrow amount (ETH)"
-          style={inputStyle}
-        />
+          <button suppressHydrationWarning type="submit" disabled={escrowLoading} className="btn-base btn-primary" style={{ width: "fit-content" }}>
+            {escrowLoading ? "Processing..." : "Create Escrow"}
+          </button>
+        </form>
 
-        <button suppressHydrationWarning type="submit" disabled={escrowLoading} style={buttonStyle}>
-          {escrowLoading ? "Working..." : "Create Escrow"}
-        </button>
+        {/* Escrow Actions */}
+        <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: "var(--space-md)", marginTop: "var(--space-sm)" }}>
+          <p style={{ margin: "0 0 var(--space-sm)", fontWeight: 600, fontSize: 14 }}>Manage Existing Escrow</p>
+          
+          <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-md)", flexWrap: "wrap" }}>
+            <input
+              suppressHydrationWarning
+              value={escrowId}
+              onChange={(e) => setEscrowId(e.target.value)}
+              placeholder="Escrow ID"
+              className="input-base"
+              style={{ width: 120 }}
+            />
+            <button
+              suppressHydrationWarning
+              type="button"
+              disabled={escrowLoading || !escrowId}
+              onClick={() => loadEscrow(escrowId)}
+              className="btn-base btn-secondary"
+            >
+              Load
+            </button>
+          </div>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onApproveTokenForEscrow} style={buttonStyle}>
-            Approve Token for Escrow
-          </button>
-          <button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onMarkShipped} style={buttonStyle}>
-            Mark Shipped
-          </button>
-          <button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onConfirmEscrow} style={buttonStyle}>
-            Confirm Received
-          </button>
-          <button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onCancelEscrow} style={buttonStyle}>
-            Cancel Expired
-          </button>
+          <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+            <button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onApproveTokenForEscrow} className="btn-base btn-secondary">
+              Approve Token
+            </button>
+            <button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onMarkShipped} className="btn-base btn-secondary">
+              Mark Shipped
+            </button>
+            <button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onConfirmEscrow} className="btn-base btn-primary">
+              Confirm Received
+            </button>
+            <button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onCancelEscrow} className="btn-base btn-danger">
+              Cancel
+            </button>
+          </div>
+
+          {/* Dispute Section */}
+          <div style={{ marginTop: "var(--space-md)", display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <label htmlFor="dispute-reason" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600, fontSize: 14 }}>
+                Dispute Reason
+              </label>
+              <input
+                id="dispute-reason"
+                suppressHydrationWarning
+                value={escrowDisputeReason}
+                onChange={(e) => setEscrowDisputeReason(e.target.value)}
+                placeholder="Reason for dispute"
+                className="input-base"
+              />
+            </div>
+            <button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onRaiseDispute} className="btn-base btn-danger">
+              Raise Dispute
+            </button>
+          </div>
         </div>
 
-        <input
-          suppressHydrationWarning
-          value={escrowId}
-          onChange={(e) => setEscrowId(e.target.value)}
-          placeholder="Escrow ID"
-          style={inputStyle}
-        />
+        {/* Escrow Status Message */}
+        {escrowMessage.text && (
+          <StatusMessage type={escrowMessage.type || "info"} message={escrowMessage.text} />
+        )}
 
-        <button
-          suppressHydrationWarning
-          type="button"
-          disabled={escrowLoading || !escrowId}
-          onClick={() => loadEscrow(escrowId)}
-          style={buttonStyle}
-        >
-          Load Escrow
-        </button>
-
-        <input
-          suppressHydrationWarning
-          value={escrowDisputeReason}
-          onChange={(e) => setEscrowDisputeReason(e.target.value)}
-          placeholder="Dispute reason"
-          style={inputStyle}
-        />
-        <button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onRaiseDispute} style={buttonStyle}>
-          Raise Dispute
-        </button>
-
-        {escrowStatusText && <p style={{ margin: 0, color: "#355" }}>{escrowStatusText}</p>}
-
+        {/* Escrow Data Display */}
         {escrowData && (
-          <div style={cardStyle}>
-            <p style={textStyle}>Escrow ID: {escrowData.id}</p>
-            <p style={textStyle}>Token ID: {escrowData.tokenId}</p>
-            <p style={textStyle}>Buyer: {truncateAddress(escrowData.buyer)}</p>
-            <p style={textStyle}>Seller: {truncateAddress(escrowData.seller)}</p>
-            <p style={textStyle}>Amount: {escrowData.salePriceEth} ETH</p>
-            <p style={textStyle}>Status: {getEscrowStatusLabel(escrowData.status)}</p>
-            {escrowData.disputeReason && <p style={textStyle}>Dispute: {escrowData.disputeReason}</p>}
+          <div className="card-base" style={{ background: "#f8fcfb" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-sm)" }}>
+              <h4 style={{ margin: 0, color: "var(--color-primary-dark)" }}>Escrow #{escrowData.id}</h4>
+              <span
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "var(--radius-full)",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  background: getEscrowStatusType(escrowData.status) === "success" ? "var(--color-success-bg)" :
+                             getEscrowStatusType(escrowData.status) === "error" ? "var(--color-error-bg)" :
+                             getEscrowStatusType(escrowData.status) === "warning" ? "var(--color-warning-bg)" : "var(--color-info-bg)",
+                  color: getEscrowStatusType(escrowData.status) === "success" ? "var(--color-success)" :
+                         getEscrowStatusType(escrowData.status) === "error" ? "var(--color-error)" :
+                         getEscrowStatusType(escrowData.status) === "warning" ? "var(--color-warning)" : "var(--color-info)"
+                }}
+              >
+                {getEscrowStatusLabel(escrowData.status)}
+              </span>
+            </div>
+            <div style={{ marginTop: "var(--space-md)", display: "grid", gap: "var(--space-xs)" }}>
+              <p style={{ margin: 0, color: "var(--color-text-secondary)" }}><strong>Token ID:</strong> {escrowData.tokenId}</p>
+              <p style={{ margin: 0, color: "var(--color-text-secondary)" }}><strong>Buyer:</strong> {truncateAddress(escrowData.buyer)}</p>
+              <p style={{ margin: 0, color: "var(--color-text-secondary)" }}><strong>Seller:</strong> {truncateAddress(escrowData.seller)}</p>
+              <p style={{ margin: 0, color: "var(--color-text-secondary)" }}><strong>Amount:</strong> {escrowData.salePriceEth} ETH</p>
+              {escrowData.disputeReason && (
+                <p style={{ margin: 0, color: "var(--color-error)" }}><strong>Dispute:</strong> {escrowData.disputeReason}</p>
+              )}
+            </div>
           </div>
         )}
-      </form>
+      </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); loadProduct(hash); }} style={formStyle}>
-        <input
-          suppressHydrationWarning
-          required
-          value={hash}
-          onChange={(e) => setHash(e.target.value)}
-          placeholder="Product hash (0x...)"
-          style={inputStyle}
-        />
-        <button suppressHydrationWarning type="submit" disabled={loading} style={buttonStyle}>Load Product</button>
-      </form>
+      {/* Direct Transfer Section */}
+      <div className="card-form card-container">
+        <h3 style={{ margin: 0, color: "var(--color-primary-dark)" }}>Direct Transfer</h3>
+        <p style={{ margin: 0, color: "var(--color-text-secondary)", fontSize: 14 }}>
+          For trusted transactions. Load a product, then transfer ownership directly.
+        </p>
 
-      {status && <p style={{ margin: 0, color: "#355" }}>{status}</p>}
+        <form onSubmit={(e) => { e.preventDefault(); loadProduct(hash); }} style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+          <input
+            suppressHydrationWarning
+            required
+            value={hash}
+            onChange={(e) => setHash(e.target.value)}
+            placeholder="Product hash (0x...)"
+            className="input-base"
+            style={{ flex: 1, minWidth: 200, fontFamily: "var(--font-mono)" }}
+          />
+          <button suppressHydrationWarning type="submit" disabled={loading} className="btn-base btn-secondary">
+            Load Product
+          </button>
+        </form>
+      </div>
 
+      {/* Status Message */}
+      {message.text && !recordState?.record && (
+        <div className="card-container">
+          <StatusMessage type={message.type || "info"} message={message.text} />
+        </div>
+      )}
+
+      {/* Product Details & Transfer Form */}
       {recordState?.record && (
         <>
-          <div style={cardStyle}>
-            <h3 style={{ marginTop: 0, marginBottom: 8 }}>Current Product State</h3>
-            <p style={textStyle}>Product: {recordState.record.productName}</p>
-            <p style={textStyle}>Current Owner: {truncateAddress(currentOwner)}</p>
-            <p style={textStyle}>Transfer Count: {String(currentTransferCount)}</p>
-            <div style={{ maxWidth: 320 }}>
+          {/* Current Product State */}
+          <div className="card-base card-container">
+            <h3 style={{ margin: "0 0 var(--space-md)", color: "var(--color-primary-dark)" }}>Product Details</h3>
+            <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+              <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+                <strong>Product:</strong> {recordState.record.productName}
+              </p>
+              <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+                <strong>Current Owner:</strong> {truncateAddress(currentOwner)}
+              </p>
+              <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+                <strong>Transfer Count:</strong> {String(currentTransferCount)}
+              </p>
+            </div>
+            <div style={{ maxWidth: 320, marginTop: "var(--space-md)" }}>
               <TerritorScore score={currentTerroir} />
             </div>
           </div>
 
-          <form onSubmit={onConfirmTransfer} style={formStyle}>
-            <input
-              suppressHydrationWarning
-              required
-              value={newOwnerInput}
-              onChange={(e) => {
-                const value = e.target.value;
-                setNewOwnerInput(value);
-                resolveOwnerInput(value);
-              }}
-              placeholder="New owner wallet address or ENS"
-              style={inputStyle}
-            />
+          {/* Transfer Form */}
+          <form onSubmit={onConfirmTransfer} className="card-form card-container">
+            <h3 style={{ margin: 0, color: "var(--color-primary-dark)" }}>Transfer Ownership</h3>
 
-            {ensInfo && <p style={{ margin: 0, color: "#577" }}>{ensInfo}</p>}
+            <div>
+              <label htmlFor="new-owner" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600 }}>
+                New Owner Address or ENS
+              </label>
+              <input
+                id="new-owner"
+                suppressHydrationWarning
+                required
+                value={newOwnerInput}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setNewOwnerInput(value);
+                  resolveOwnerInput(value);
+                }}
+                placeholder="0x... or name.eth"
+                className="input-base"
+                style={{ fontFamily: "var(--font-mono)" }}
+              />
+              {ensInfo && (
+                <p style={{ margin: "var(--space-xs) 0 0", fontSize: 13, color: ensInfo.includes("resolved") ? "var(--color-success)" : "var(--color-warning)" }}>
+                  {ensInfo}
+                </p>
+              )}
+            </div>
 
-            <input
-              suppressHydrationWarning
-              required
-              type="number"
-              min="0.0001"
-              step="0.0001"
-              value={paymentEth}
-              onChange={(e) => setPaymentEth(e.target.value)}
-              placeholder="Buyer payment (ETH)"
-              style={inputStyle}
-            />
+            <div>
+              <label htmlFor="payment-amount" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600 }}>
+                Payment Amount (ETH)
+              </label>
+              <input
+                id="payment-amount"
+                suppressHydrationWarning
+                required
+                type="number"
+                min="0.0001"
+                step="0.0001"
+                value={paymentEth}
+                onChange={(e) => setPaymentEth(e.target.value)}
+                placeholder="0.05"
+                className="input-base"
+              />
+            </div>
 
-            <div style={cardStyle}>
-              <h3 style={{ marginTop: 0, marginBottom: 8 }}>Quadratic Royalty Calculator</h3>
-              <p style={textStyle}>Current transfer number: {nextTransferNumber}</p>
-              <p style={textStyle}>Formula: royalty = 40% / sqrt(N)</p>
-              <p style={textStyle}>At transfer 1: 40% goes to artisan</p>
-              <p style={textStyle}>At transfer 2: 28% goes to artisan</p>
-              <p style={textStyle}>At transfer 4: 20% goes to artisan</p>
-              <p style={textStyle}>At transfer 9: 13% goes to artisan</p>
-
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 10, minHeight: 120 }}>
+            {/* Royalty Info Card */}
+            <div className="card-base" style={{ background: "#f8fcfb" }}>
+              <h4 style={{ margin: "0 0 var(--space-md)", color: "var(--color-primary-dark)" }}>Artisan Royalty</h4>
+              <p style={{ margin: 0, color: "var(--color-text-secondary)", fontSize: 14 }}>
+                The original artisan receives a royalty on every transfer. This percentage decreases with each sale using a quadratic formula.
+              </p>
+              
+              {/* Royalty Visualization */}
+              <div style={{ display: "flex", gap: "var(--space-md)", alignItems: "flex-end", marginTop: "var(--space-md)", minHeight: 100 }}>
                 {decaySamples.map((item) => (
-                  <div key={item.n} style={{ display: "grid", justifyItems: "center", gap: 6 }}>
+                  <div key={item.n} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                     <div
                       style={{
-                        width: 48,
+                        width: 40,
                         height: item.percent * 2,
-                        background: "#7ec9b1",
-                        border: "1px solid #5eb39a",
-                        borderRadius: 6
+                        background: item.n === nextTransferNumber ? "var(--color-primary)" : "#7ec9b1",
+                        border: item.n === nextTransferNumber ? "2px solid var(--color-primary-dark)" : "1px solid #5eb39a",
+                        borderRadius: "var(--radius-sm)"
                       }}
                     />
-                    <div style={{ fontSize: 12, color: "#466" }}>N={item.n}</div>
-                    <div style={{ fontSize: 12, color: "#274f45", fontWeight: 700 }}>{item.percent}%</div>
+                    <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>#{item.n}</div>
+                    <div style={{ fontSize: 12, color: "var(--color-primary-dark)", fontWeight: 700 }}>{item.percent}%</div>
                   </div>
                 ))}
               </div>
 
-              <p style={{ marginTop: 12, marginBottom: 0, color: "#274f45", fontWeight: 700 }}>
-                For this transfer: artisan receives {artisanPayment.toFixed(6)} ETH of your {buyerPayment.toFixed(6)} ETH payment
-              </p>
+              <div style={{ marginTop: "var(--space-md)", padding: "var(--space-md)", background: "var(--color-success-bg)", borderRadius: "var(--radius-md)" }}>
+                <p style={{ margin: 0, color: "var(--color-success)", fontWeight: 700 }}>
+                  For this transfer: Artisan receives {artisanPayment.toFixed(6)} ETH ({royaltyPercent.toFixed(1)}% of {buyerPayment.toFixed(6)} ETH)
+                </p>
+              </div>
             </div>
 
+            {/* Terroir Impact Preview */}
             {projectedTerroir !== null && (
-              <div
-                style={{
-                  background: newOwnerVerified ? "#e2f7ed" : "#fff0e0",
-                  border: "1px solid " + (newOwnerVerified ? "#9fd8c0" : "#e7c09f"),
-                  borderRadius: 10,
-                  padding: "10px 12px"
-                }}
-              >
-                <div style={{ fontWeight: 700, color: newOwnerVerified ? "#186d4c" : "#8a5b09" }}>
-                  {newOwnerVerified
-                    ? "Score will remain " + currentTerroir + " — verified handler"
-                    : "Score will drop from " + currentTerroir + " to " + projectedTerroir + " — unverified handler detected"}
-                </div>
-              </div>
+              <StatusMessage
+                type={newOwnerVerified ? "success" : "warning"}
+                title={newOwnerVerified ? "Verified Handler" : "Unverified Handler Warning"}
+                message={newOwnerVerified
+                  ? `Authenticity score will remain at ${currentTerroir} because this new owner is a verified artisan.`
+                  : `Authenticity score will drop from ${currentTerroir} to ${projectedTerroir} because this new owner is not a verified artisan.`}
+              />
             )}
 
-            <button suppressHydrationWarning disabled={loading} type="submit" style={buttonStyle}>
-              {loading ? "Processing..." : "Confirm Transfer"}
+            <button suppressHydrationWarning disabled={loading} type="submit" className="btn-base btn-primary" style={{ width: "100%" }}>
+              {loading ? "Processing transfer..." : "Confirm Transfer"}
             </button>
 
-            {stepProgress && (
-              <div
-                style={{
-                  border: "1px dashed #b4d8cb",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  color: "#2f5a50",
-                  background: "#eff8f4"
-                }}
-              >
-                {stepProgress}
-              </div>
+            {/* Progress Steps */}
+            {currentStep >= 0 && (
+              <ProgressSteps currentStep={currentStep} steps={transferSteps} />
             )}
           </form>
 
-          {transferSuccess && (
-            <div style={cardStyle}>
-              <h3 style={{ marginTop: 0, marginBottom: 8, color: "#1f6d50" }}>Transfer Completed</h3>
-              <p style={textStyle}>New Terroir Score: {transferSuccess.newTerroir}</p>
-              <p style={textStyle}>Artisan payment: {transferSuccess.artisanPaymentEth} ETH</p>
-              {transferSuccess.txUrl && (
-                <p style={textStyle}>
-                  Etherscan: <a href={transferSuccess.txUrl} target="_blank" rel="noreferrer" style={linkStyle}>View tx</a>
-                </p>
-              )}
+          {/* Status Message */}
+          {message.text && (
+            <div className="card-container">
+              <StatusMessage type={message.type || "info"} message={message.text} />
             </div>
           )}
 
-          <div style={cardStyle}>
-            <p style={{ margin: 0, color: "#466" }}>
-              Consumer verification link:{" "}
-              <Link href={"/verify?hash=" + hash} style={linkStyle}>
-                /verify?hash={hash}
+          {/* Transfer Success */}
+          {transferSuccess && (
+            <div className="card-base card-container" style={{ borderColor: "var(--color-success)" }}>
+              <h3 style={{ margin: "0 0 var(--space-md)", color: "var(--color-success)" }}>Transfer Complete</h3>
+              <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+                <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+                  <strong>New Authenticity Score:</strong> {transferSuccess.newTerroir}
+                </p>
+                <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+                  <strong>Artisan Royalty Paid:</strong> {transferSuccess.artisanPaymentEth} ETH
+                </p>
+                {transferSuccess.txUrl && (
+                  <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+                    <strong>Transaction:</strong>{" "}
+                    <a href={transferSuccess.txUrl} target="_blank" rel="noreferrer" className="link-primary">
+                      View on Etherscan
+                    </a>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Verification Link */}
+          <div className="card-base card-container">
+            <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+              <strong>Verification Link:</strong>{" "}
+              <Link href={"/verify?hash=" + hash} className="link-primary">
+                /verify?hash={hash.slice(0, 10)}...
               </Link>
             </p>
           </div>
@@ -681,49 +835,3 @@ export default function TransferPage() {
     </section>
   );
 }
-
-const formStyle = {
-  display: "grid",
-  gap: 10,
-  maxWidth: 760,
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14
-};
-
-const inputStyle = {
-  border: "1px solid #cfe2db",
-  borderRadius: 8,
-  padding: "10px 12px",
-  fontSize: 14
-};
-
-const buttonStyle = {
-  background: "#1D9E75",
-  color: "white",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content",
-  textDecoration: "none",
-  display: "inline-block"
-};
-
-const cardStyle = {
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14,
-  maxWidth: 760
-};
-
-const textStyle = { margin: "4px 0", color: "#355" };
-
-const linkStyle = {
-  color: "#176f52",
-  fontWeight: 700,
-  textDecoration: "none"
-};

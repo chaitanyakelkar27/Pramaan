@@ -5,10 +5,21 @@ import { createPublicClient, http, webSocket } from "viem";
 import { sepolia } from "viem/chains";
 import { PRODUCT_ABI } from "../../src/utils/abi";
 import { PRODUCT_REGISTRY_ADDRESS, RPC_URL, WS_RPC_URL } from "../../src/utils/constants";
+import StatusMessage from "../../components/StatusMessage";
+
+// User-friendly messages
+const MESSAGES = {
+  connecting: "Connecting to the live event stream...",
+  connected: "Live stream connected. New events will appear automatically.",
+  disconnected: "Connection lost. Please refresh the page to reconnect.",
+  error: "Could not connect to the event stream. Please check your network connection.",
+  noEvents: "No events yet. Register or transfer a product to see activity here.",
+  missingAddress: "Contract address not configured. Please check your environment settings."
+};
 
 export default function MonitorPage() {
   const [events, setEvents] = useState([]);
-  const [status, setStatus] = useState("Connecting to live event stream...");
+  const [status, setStatus] = useState({ type: "progress", text: MESSAGES.connecting });
   const unsubRef = useRef([]);
 
   const wsClient = useMemo(() => {
@@ -29,8 +40,8 @@ export default function MonitorPage() {
     let mounted = true;
 
     async function attachWatchers() {
-      if (!PRODUCT_REGISTRY_ADDRESS) {
-        setStatus("Missing PRODUCT_REGISTRY_ADDRESS in env.");
+      if (!PRODUCT_REGISTRY_ADDRESS || PRODUCT_REGISTRY_ADDRESS === "PASTE_ADDRESS_HERE") {
+        setStatus({ type: "error", text: MESSAGES.missingAddress });
         return;
       }
 
@@ -52,6 +63,7 @@ export default function MonitorPage() {
               pushEvent({
                 id: String(log.transactionHash) + ":reg",
                 type: "ProductRegistered",
+                label: "New Product Registered",
                 hash: log.args.productHash,
                 txHash: log.transactionHash,
                 time: new Date(Number(block.timestamp) * 1000).toLocaleString()
@@ -59,7 +71,9 @@ export default function MonitorPage() {
             }
           },
           onError: () => {
-            setStatus("Live stream error. Check WS endpoint.");
+            if (mounted) {
+              setStatus({ type: "error", text: MESSAGES.disconnected });
+            }
           }
         });
 
@@ -73,6 +87,7 @@ export default function MonitorPage() {
               pushEvent({
                 id: String(log.transactionHash) + ":xfer",
                 type: "ProductTransferred",
+                label: "Product Transferred",
                 hash: log.args.productHash,
                 txHash: log.transactionHash,
                 from: log.args.from,
@@ -83,14 +98,21 @@ export default function MonitorPage() {
             }
           },
           onError: () => {
-            setStatus("Live stream error. Check WS endpoint.");
+            if (mounted) {
+              setStatus({ type: "error", text: MESSAGES.disconnected });
+            }
           }
         });
 
         unsubRef.current = [unwatchRegistered, unwatchTransferred];
-        setStatus("Live stream connected.");
+        
+        if (mounted) {
+          setStatus({ type: "success", text: MESSAGES.connected });
+        }
       } catch (_error) {
-        setStatus("Could not connect to websocket stream.");
+        if (mounted) {
+          setStatus({ type: "error", text: MESSAGES.error });
+        }
       }
     }
 
@@ -107,31 +129,98 @@ export default function MonitorPage() {
     };
   }, [httpClient, wsClient]);
 
-  return (
-    <section style={{ display: "grid", gap: 14 }}>
-      <h1 style={{ margin: 0 }}>Live Monitor</h1>
-      <p style={{ margin: 0, color: "#466" }}>
-        Realtime timeline of ProductRegistered and ProductTransferred events.
-      </p>
-      <p style={{ margin: 0, color: "#355", fontWeight: 700 }}>{status}</p>
+  function truncateHash(hash) {
+    if (!hash || hash.length < 20) {
+      return hash;
+    }
+    return hash.slice(0, 10) + "..." + hash.slice(-6);
+  }
 
-      <div style={{ display: "grid", gap: 10 }}>
+  function truncateAddress(address) {
+    if (!address) {
+      return "-";
+    }
+    return address.slice(0, 6) + "..." + address.slice(-4);
+  }
+
+  return (
+    <section style={{ display: "grid", gap: "var(--space-lg)" }}>
+      <div>
+        <h1 className="page-title">Live Monitor</h1>
+        <p className="page-subtitle" style={{ marginTop: "var(--space-sm)" }}>
+          Watch product registrations and transfers happen in real-time on the blockchain.
+        </p>
+      </div>
+
+      {/* Connection Status */}
+      <StatusMessage type={status.type || "info"} message={status.text} animate={false} />
+
+      {/* Events Timeline */}
+      <div style={{ display: "grid", gap: "var(--space-md)" }}>
         {events.length === 0 && (
-          <div style={cardStyle}>No events yet. Trigger register/transfer flows to populate timeline.</div>
+          <div className="card-base" style={{ textAlign: "center", padding: "var(--space-2xl)" }}>
+            <p style={{ margin: 0, color: "var(--color-text-muted)" }}>{MESSAGES.noEvents}</p>
+          </div>
         )}
 
         {events.map((event) => (
-          <div key={event.id} style={cardStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-              <strong style={{ color: "#1f6d50" }}>{event.type}</strong>
-              <span style={{ color: "#55756c" }}>{event.time}</span>
+          <div 
+            key={event.id} 
+            className="card-base"
+            style={{ 
+              borderLeft: `4px solid ${event.type === "ProductRegistered" ? "var(--color-success)" : "var(--color-primary)"}` 
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--space-md)", flexWrap: "wrap" }}>
+              <div>
+                <span
+                  style={{
+                    display: "inline-block",
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-full)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    background: event.type === "ProductRegistered" ? "var(--color-success-bg)" : "var(--color-info-bg)",
+                    color: event.type === "ProductRegistered" ? "var(--color-success)" : "var(--color-info)",
+                    marginBottom: "var(--space-sm)"
+                  }}
+                >
+                  {event.label}
+                </span>
+              </div>
+              <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>{event.time}</span>
             </div>
-            <div style={monoText}>Product Hash: {event.hash}</div>
-            {event.from && <div style={monoText}>From: {event.from}</div>}
-            {event.to && <div style={monoText}>To: {event.to}</div>}
-            {typeof event.count === "number" && <div style={{ color: "#355" }}>Transfer Count: {event.count}</div>}
-            <a href={"https://sepolia.etherscan.io/tx/" + event.txHash} target="_blank" rel="noreferrer" style={linkStyle}>
-              View tx
+
+            <div style={{ display: "grid", gap: "var(--space-xs)", marginTop: "var(--space-sm)" }}>
+              <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-secondary)" }}>
+                <strong>Product:</strong>{" "}
+                <span style={{ fontFamily: "var(--font-mono)" }}>{truncateHash(event.hash)}</span>
+              </p>
+              
+              {event.from && (
+                <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-secondary)" }}>
+                  <strong>From:</strong>{" "}
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{truncateAddress(event.from)}</span>
+                  {" "}<strong>To:</strong>{" "}
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{truncateAddress(event.to)}</span>
+                </p>
+              )}
+              
+              {typeof event.count === "number" && (
+                <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-secondary)" }}>
+                  <strong>Transfer #:</strong> {event.count}
+                </p>
+              )}
+            </div>
+
+            <a 
+              href={"https://sepolia.etherscan.io/tx/" + event.txHash} 
+              target="_blank" 
+              rel="noreferrer" 
+              className="link-primary"
+              style={{ marginTop: "var(--space-sm)", display: "inline-block", fontSize: 14 }}
+            >
+              View transaction
             </a>
           </div>
         ))}
@@ -139,24 +228,3 @@ export default function MonitorPage() {
     </section>
   );
 }
-
-const cardStyle = {
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 12,
-  display: "grid",
-  gap: 6
-};
-
-const monoText = {
-  color: "#355",
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  wordBreak: "break-all"
-};
-
-const linkStyle = {
-  color: "#176f52",
-  fontWeight: 700,
-  textDecoration: "none"
-};

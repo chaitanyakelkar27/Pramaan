@@ -4,10 +4,24 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import TerritorScore from "../../components/TerritorScore";
+import StatusMessage, { ProgressSteps } from "../../components/StatusMessage";
 import { giRegions } from "../../src/utils/craftDetector";
 import { getArtisan, getArtisanTokenId, connectWallet, isVerifiedArtisan, registerProduct } from "../../src/utils/contract";
 import { hashProduct } from "../../src/utils/hash";
 import { getIPFSUrl, uploadToIPFS } from "../../src/utils/ipfs";
+
+// User-friendly messages
+const MESSAGES = {
+  checking: "Verifying your artisan credentials...",
+  notVerified: "You need to complete artisan registration before registering products.",
+  partialVerified: "Your artisan identity was found, but verification is incomplete. Please finish setting up your identity first.",
+  hashingImage: "Creating a unique fingerprint for your product image...",
+  uploading: "Uploading your product image to permanent storage...",
+  registering: "Recording your product on the blockchain...",
+  success: "Your product has been registered successfully! You can now share the verification link with buyers.",
+  alreadyRegistered: "This product image has already been registered. Taking you to the verification page...",
+  walletError: "Could not connect to your wallet. Please make sure you have a wallet extension installed."
+};
 
 export default function RegisterProductPage() {
   const router = useRouter();
@@ -28,10 +42,16 @@ export default function RegisterProductPage() {
   const [productImage, setProductImage] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [productHash, setProductHash] = useState("");
-  const [statusText, setStatusText] = useState("");
-  const [stepProgress, setStepProgress] = useState("");
+  const [message, setMessage] = useState({ type: "", text: "" });
+  const [currentStep, setCurrentStep] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(null);
+
+  const registrationSteps = [
+    "Creating product fingerprint",
+    "Uploading to permanent storage",
+    "Recording on blockchain"
+  ];
 
   useEffect(() => {
     let mounted = true;
@@ -60,11 +80,9 @@ export default function RegisterProductPage() {
 
         if (!verified) {
           if (hasRegistration) {
-            setStatusText(
-              "Artisan SBT found, but wallet is not fully verified yet. Open Artisan page and sync Aadhaar on-chain."
-            );
+            setMessage({ type: "warning", text: MESSAGES.partialVerified });
           } else {
-            setStatusText("You must register as an artisan before registering products.");
+            setMessage({ type: "warning", text: MESSAGES.notVerified });
           }
 
           try {
@@ -97,7 +115,7 @@ export default function RegisterProductPage() {
         }
       } catch (error) {
         if (mounted) {
-          setStatusText(error?.message || "Could not connect wallet.");
+          setMessage({ type: "error", text: error?.message || MESSAGES.walletError });
         }
       } finally {
         if (mounted) {
@@ -135,12 +153,14 @@ export default function RegisterProductPage() {
     }
 
     setPreviewUrl(URL.createObjectURL(file));
+    setMessage({ type: "progress", text: MESSAGES.hashingImage });
 
     try {
       const hash = await hashProduct(file);
       setProductHash(hash);
+      setMessage({ type: "success", text: "Product fingerprint created successfully." });
     } catch (error) {
-      setStatusText(error?.message || "Could not hash selected file.");
+      setMessage({ type: "error", text: error?.message || "Could not create product fingerprint. Please try a different image." });
     }
   }
 
@@ -160,24 +180,25 @@ export default function RegisterProductPage() {
     event.preventDefault();
 
     if (!productImage) {
-      setStatusText("Please upload a product image.");
+      setMessage({ type: "warning", text: "Please upload an image of your product." });
       return;
     }
 
     if (!productHash) {
-      setStatusText("Product hash not ready yet.");
+      setMessage({ type: "warning", text: "Please wait for the product fingerprint to be created." });
       return;
     }
 
     setLoading(true);
-    setStatusText("");
+    setMessage({ type: "", text: "" });
     setSuccess(null);
-    setStepProgress("Step 1/3: Uploading product image to IPFS...");
+    setCurrentStep(0);
 
     try {
+      setCurrentStep(1);
       const cid = await uploadToIPFS(productImage);
 
-      setStepProgress("Step 2/3: Anchoring product identity on Sepolia...");
+      setCurrentStep(2);
 
       const latScaled = Math.round(Number(form.lat) * 1000000);
       const lngScaled = Math.round(Number(form.lng) * 1000000);
@@ -190,8 +211,6 @@ export default function RegisterProductPage() {
         latScaled,
         lngScaled
       );
-
-      setStepProgress("Step 3/3: Confirming...");
 
       const txHash = receipt?.transactionHash || receipt?.hash || "";
       const ipfsUrl = getIPFSUrl(cid);
@@ -206,223 +225,273 @@ export default function RegisterProductPage() {
         transferUrl
       });
 
-      setStatusText("Product registered successfully.");
+      setMessage({ type: "success", text: MESSAGES.success });
     } catch (error) {
       if (isAlreadyRegisteredError(error)) {
         const verifyUrl = "/verify?hash=" + productHash;
-        setStatusText("Product already registered. Redirecting to verification page...");
-        setStepProgress("Opening existing record...");
-        router.push(verifyUrl);
+        setMessage({ type: "info", text: MESSAGES.alreadyRegistered });
+        setTimeout(() => router.push(verifyUrl), 1500);
       } else {
-        setStatusText(error?.shortMessage || error?.message || "Product registration failed.");
+        setMessage({ type: "error", text: error?.shortMessage || error?.message || "Could not register your product. Please try again." });
       }
     } finally {
       setLoading(false);
-      setStepProgress("");
+      setCurrentStep(-1);
     }
   }
 
   if (checking) {
     return (
-      <section style={{ display: "grid", gap: 10 }}>
-        <h1 style={{ margin: 0 }}>Register Product</h1>
-        <p style={{ margin: 0, color: "#466" }}>Checking artisan identity...</p>
+      <section style={{ display: "grid", gap: "var(--space-lg)" }}>
+        <h1 className="page-title">Register Product</h1>
+        <StatusMessage type="progress" message={MESSAGES.checking} />
       </section>
     );
   }
 
   if (!isVerified) {
     return (
-      <section style={{ display: "grid", gap: 10 }}>
-        <h1 style={{ margin: 0 }}>Register Product</h1>
-        <p style={{ margin: 0, color: "#8a1f1f", fontWeight: 600 }}>
-          {statusText || "You must register as an artisan before registering products."}
-        </p>
-        {walletAddress && <p style={{ margin: 0, color: "#466" }}>Wallet: {walletAddress}</p>}
-        <p style={{ margin: 0, color: "#466" }}>SBT Token ID: {tokenId}</p>
-        <Link href="/artisan" style={linkStyle}>
-          Go to Artisan Registration
+      <section style={{ display: "grid", gap: "var(--space-lg)" }}>
+        <div>
+          <h1 className="page-title">Register Product</h1>
+          <p className="page-subtitle" style={{ marginTop: "var(--space-sm)" }}>
+            Complete your artisan setup to start registering products.
+          </p>
+        </div>
+
+        <StatusMessage 
+          type="warning" 
+          message={message.text || MESSAGES.notVerified}
+          title="Action Required"
+        />
+
+        <div className="card-base form-container">
+          <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+            <strong>Wallet:</strong> {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-4)}` : "Not connected"}
+          </p>
+          <p style={{ margin: "var(--space-sm) 0 0", color: "var(--color-text-secondary)" }}>
+            <strong>Artisan Token ID:</strong> {tokenId}
+          </p>
+        </div>
+
+        <Link href="/artisan" className="btn-base btn-primary" style={{ width: "fit-content" }}>
+          Complete Artisan Registration
         </Link>
       </section>
     );
   }
 
   return (
-    <section style={{ display: "grid", gap: 16 }}>
-      <h1 style={{ margin: 0 }}>Register Product</h1>
-      <p style={{ margin: 0, color: "#466" }}>
-        Upload product proof, hash it, pin to IPFS, then register on-chain.
-      </p>
-
-      <div style={cardStyle}>
-        <h3 style={{ marginTop: 0, marginBottom: 10 }}>Verified Artisan</h3>
-        <p style={textStyle}>Wallet: {walletAddress}</p>
-        <p style={textStyle}>Name: {artisan?.name}</p>
-        <p style={textStyle}>Craft Type: {artisan?.craft}</p>
-        <p style={textStyle}>GI Region: {artisan?.giRegion || giRegions[String(artisan?.craft || "")] || "-"}</p>
-        <p style={textStyle}>Aadhaar Verified: {artisan?.isAadhaarVerified ? "Yes" : "No"}</p>
-        <p style={textStyle}>Fraud Flag: {artisan?.isFraudulent ? "Yes" : "No"}</p>
-        <p style={textStyle}>SBT Token ID: {tokenId}</p>
+    <section style={{ display: "grid", gap: "var(--space-lg)" }}>
+      <div>
+        <h1 className="page-title">Register Product</h1>
+        <p className="page-subtitle" style={{ marginTop: "var(--space-sm)" }}>
+          Create a permanent record of your product on the blockchain. This proves its authenticity forever.
+        </p>
       </div>
 
-      <form onSubmit={onSubmit} style={formStyle}>
-        <input
-          required
-          placeholder="Product name (e.g. First Flush Darjeeling 2024)"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          style={inputStyle}
-        />
-        <input
-          required
-          placeholder="GI Tag"
-          value={form.giTag}
-          readOnly
-          style={inputStyle}
-        />
-        <input
-          required
-          type="number"
-          placeholder="Latitude"
-          value={form.lat}
-          onChange={(e) => setForm({ ...form, lat: e.target.value })}
-          style={inputStyle}
-        />
-        <input
-          required
-          type="number"
-          placeholder="Longitude"
-          value={form.lng}
-          onChange={(e) => setForm({ ...form, lng: e.target.value })}
-          style={inputStyle}
-        />
+      {/* Verified Artisan Info Card */}
+      <div className="card-base card-container">
+        <h3 style={{ margin: "0 0 var(--space-md)", color: "var(--color-primary-dark)" }}>Your Artisan Profile</h3>
+        <div style={{ display: "grid", gap: "var(--space-xs)" }}>
+          <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+            <strong>Wallet:</strong> {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-4)}` : "-"}
+          </p>
+          <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+            <strong>Name:</strong> {artisan?.name || "-"}
+          </p>
+          <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+            <strong>Craft:</strong> {artisan?.craft || "-"}
+          </p>
+          <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+            <strong>GI Region:</strong> {artisan?.giRegion || giRegions[String(artisan?.craft || "")] || "-"}
+          </p>
+          <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+            <strong>Identity Verified:</strong> {artisan?.isAadhaarVerified ? "Yes" : "No"}
+          </p>
+          <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+            <strong>Artisan Token:</strong> #{tokenId}
+          </p>
+        </div>
+      </div>
 
-        <input
-          type="number"
-          placeholder="Batch size (optional)"
-          value={form.batchSize}
-          onChange={(e) => setForm({ ...form, batchSize: e.target.value })}
-          style={inputStyle}
-        />
+      {/* Registration Form */}
+      <form onSubmit={onSubmit} className="card-form form-container">
+        <div>
+          <label htmlFor="product-name" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600 }}>
+            Product Name
+          </label>
+          <input
+            id="product-name"
+            required
+            placeholder="e.g., First Flush Darjeeling 2024"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className="input-base"
+          />
+        </div>
 
-        <input type="file" accept="image/*" required onChange={onImageChange} style={inputStyle} />
+        <div>
+          <label htmlFor="gi-tag" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600 }}>
+            GI Tag (from your profile)
+          </label>
+          <input
+            id="gi-tag"
+            required
+            placeholder="GI Tag"
+            value={form.giTag}
+            readOnly
+            className="input-base"
+            style={{ background: "#f8f8f8" }}
+          />
+        </div>
 
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-md)" }}>
+          <div>
+            <label htmlFor="latitude" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600 }}>
+              Latitude
+            </label>
+            <input
+              id="latitude"
+              required
+              type="number"
+              step="any"
+              placeholder="e.g., 26.8467"
+              value={form.lat}
+              onChange={(e) => setForm({ ...form, lat: e.target.value })}
+              className="input-base"
+            />
+          </div>
+          <div>
+            <label htmlFor="longitude" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600 }}>
+              Longitude
+            </label>
+            <input
+              id="longitude"
+              required
+              type="number"
+              step="any"
+              placeholder="e.g., 80.9462"
+              value={form.lng}
+              onChange={(e) => setForm({ ...form, lng: e.target.value })}
+              className="input-base"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="batch-size" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600 }}>
+            Batch Size (optional)
+          </label>
+          <input
+            id="batch-size"
+            type="number"
+            placeholder="Number of items in this batch"
+            value={form.batchSize}
+            onChange={(e) => setForm({ ...form, batchSize: e.target.value })}
+            className="input-base"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="product-image" style={{ display: "block", marginBottom: "var(--space-xs)", fontWeight: 600 }}>
+            Product Image
+          </label>
+          <input 
+            id="product-image"
+            type="file" 
+            accept="image/*" 
+            required 
+            onChange={onImageChange} 
+            className="input-base"
+            style={{ padding: "var(--space-sm)" }}
+          />
+          <p style={{ margin: "var(--space-xs) 0 0", fontSize: 13, color: "var(--color-text-muted)" }}>
+            This image will be permanently stored and used to verify your product.
+          </p>
+        </div>
+
+        {/* Image Preview */}
         {previewUrl && (
           <img
             src={previewUrl}
-            alt="Product preview"
-            style={{ width: "100%", maxWidth: 360, borderRadius: 10, border: "1px solid #d3e6df" }}
+            alt="Preview of your product"
+            className="image-preview"
           />
         )}
 
+        {/* Product Hash Display */}
         {productHash && (
-          <p style={{ margin: 0, color: "#2f5a50", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-            Product hash: {getTruncatedHash(productHash)}
-          </p>
+          <div className="card-base" style={{ background: "var(--color-info-bg)" }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}>Product Fingerprint</p>
+            <p style={{ margin: "var(--space-xs) 0 0", fontFamily: "var(--font-mono)", color: "var(--color-info)", wordBreak: "break-all" }}>
+              {getTruncatedHash(productHash)}
+            </p>
+          </div>
         )}
 
-        <button type="submit" disabled={loading} style={buttonStyle}>
-          {loading ? "Processing..." : "Register Product"}
+        {/* Submit Button */}
+        <button type="submit" disabled={loading} className="btn-base btn-primary" style={{ width: "100%" }}>
+          {loading ? "Registering your product..." : "Register Product"}
         </button>
 
-        {stepProgress && (
-          <div
-            style={{
-              border: "1px dashed #b4d8cb",
-              borderRadius: 8,
-              padding: "8px 10px",
-              color: "#2f5a50",
-              background: "#eff8f4"
-            }}
-          >
-            {stepProgress}
-          </div>
+        {/* Progress Steps */}
+        {currentStep >= 0 && (
+          <ProgressSteps currentStep={currentStep} steps={registrationSteps} />
         )}
       </form>
 
-      {statusText && <p style={{ margin: 0, color: "#355" }}>{statusText}</p>}
+      {/* Status Message */}
+      {message.text && (
+        <div className="form-container">
+          <StatusMessage type={message.type || "info"} message={message.text} />
+        </div>
+      )}
 
+      {/* Success Card */}
       {success && (
-        <div style={cardStyle}>
-          <h3 style={{ marginTop: 0, marginBottom: 8, color: "#1f6d50" }}>Registration Complete</h3>
-          <p style={textStyle}>Product hash: {success.productHash}</p>
-          <p style={textStyle}>
-            IPFS Image:{" "}
-            <a href={success.ipfsUrl} target="_blank" rel="noreferrer" style={linkStyle}>
-              {success.ipfsUrl}
-            </a>
-          </p>
-          {success.txUrl && (
-            <p style={textStyle}>
-              Etherscan:{" "}
-              <a href={success.txUrl} target="_blank" rel="noreferrer" style={linkStyle}>
-                View tx
+        <div className="card-base card-container" style={{ borderColor: "var(--color-success)" }}>
+          <h3 style={{ margin: "0 0 var(--space-md)", color: "var(--color-success)" }}>Product Registered Successfully</h3>
+          
+          <div style={{ display: "grid", gap: "var(--space-sm)" }}>
+            <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+              <strong>Product Fingerprint:</strong>
+            </p>
+            <p style={{ margin: 0, fontFamily: "var(--font-mono)", fontSize: 13, wordBreak: "break-all", color: "var(--color-text-muted)" }}>
+              {success.productHash}
+            </p>
+            
+            <p style={{ margin: "var(--space-sm) 0 0", color: "var(--color-text-secondary)" }}>
+              <strong>Permanent Image:</strong>{" "}
+              <a href={success.ipfsUrl} target="_blank" rel="noreferrer" className="link-primary">
+                View on IPFS
               </a>
             </p>
-          )}
+            
+            {success.txUrl && (
+              <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+                <strong>Transaction:</strong>{" "}
+                <a href={success.txUrl} target="_blank" rel="noreferrer" className="link-primary">
+                  View on Etherscan
+                </a>
+              </p>
+            )}
+          </div>
 
-          <div style={{ maxWidth: 340, marginTop: 12 }}>
+          <div style={{ marginTop: "var(--space-lg)", maxWidth: 340 }}>
             <TerritorScore score={100} />
           </div>
 
-          <p style={textStyle}>
-            Verification URL:{" "}
-            <Link href={success.verifyUrl} style={linkStyle}>
-              {success.verifyUrl}
+          <div style={{ marginTop: "var(--space-lg)", display: "flex", flexWrap: "wrap", gap: "var(--space-md)" }}>
+            <Link href={success.verifyUrl} className="btn-base btn-secondary">
+              View Verification Page
             </Link>
-          </p>
-
-          <Link href={success.transferUrl} style={buttonStyle}>
-            Transfer Ownership
-          </Link>
+            <Link href={success.transferUrl} className="btn-base btn-primary">
+              Transfer Ownership
+            </Link>
+          </div>
         </div>
       )}
     </section>
   );
 }
-
-const formStyle = {
-  display: "grid",
-  gap: 10,
-  maxWidth: 560,
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14
-};
-
-const inputStyle = {
-  border: "1px solid #cfe2db",
-  borderRadius: 8,
-  padding: "10px 12px",
-  fontSize: 14
-};
-
-const buttonStyle = {
-  background: "#1D9E75",
-  color: "white",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content",
-  textDecoration: "none",
-  display: "inline-block"
-};
-
-const cardStyle = {
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14,
-  maxWidth: 760
-};
-
-const textStyle = { margin: "4px 0", color: "#355" };
-
-const linkStyle = {
-  color: "#176f52",
-  fontWeight: 700,
-  textDecoration: "none"
-};

@@ -6,6 +6,7 @@ import { LogInWithAnonAadhaar, useAnonAadhaar } from "@anon-aadhaar/react";
 import { craftTypes, detectCraft, giRegions } from "../../src/utils/craftDetector";
 import { uploadToIPFS } from "../../src/utils/ipfs";
 import { connectWallet, getArtisan, isVerifiedArtisan, markAadhaarVerified, registerArtisan } from "../../src/utils/contract";
+import StatusMessage, { ProgressSteps } from "../../components/StatusMessage";
 
 const TRANSFER_EVENT_SIGNATURE =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -23,6 +24,22 @@ function getAadhaarNullifierSeed() {
   return DEFAULT_AADHAAR_NULLIFIER_SEED;
 }
 
+// User-friendly messages
+const MESSAGES = {
+  walletConnected: "Your wallet is connected and ready.",
+  walletFailed: "Could not connect your wallet. Please make sure you have a wallet extension installed and try again.",
+  aadhaarSynced: "Your identity has been verified on-chain. You can now register as an artisan.",
+  aadhaarSyncFailed: "Could not sync your verification status. Please ensure your wallet has the required permissions.",
+  analyzing: "Checking your craft image for authenticity...",
+  scoreHigh: "Great news! Your craft signature is verified and ready for registration.",
+  scoreMedium: "Your craft signature has been verified.",
+  scoreLow: "We could not detect a valid craft signature in this image. Please upload a clear photo of your handmade work.",
+  registering: "Creating your artisan identity on the blockchain...",
+  registered: "Congratulations! Your artisan identity has been created. Taking you to product registration...",
+  alreadyRegistered: "You already have an artisan identity registered with this wallet.",
+  redirecting: "You are already registered. Taking you to product registration..."
+};
+
 export default function ArtisanPage() {
   const router = useRouter();
   const [anonAadhaar] = useAnonAadhaar();
@@ -39,16 +56,22 @@ export default function ArtisanPage() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [craftScore, setCraftScore] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [stepProgress, setStepProgress] = useState("");
+  const [currentStep, setCurrentStep] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [syncingAadhaar, setSyncingAadhaar] = useState(false);
   const [aadhaarSyncedOnChain, setAadhaarSyncedOnChain] = useState(false);
   const [autoSyncAttempted, setAutoSyncAttempted] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState({ type: "", text: "" });
   const [success, setSuccess] = useState(null);
 
   const anonStatus = anonAadhaar?.status || "logged-out";
   const isAnonVerified = anonStatus === "logged-in";
+
+  const registrationSteps = [
+    "Connecting wallet",
+    "Uploading craft image",
+    "Creating identity on blockchain"
+  ];
 
   useEffect(() => {
     setHydrated(true);
@@ -81,7 +104,7 @@ export default function ArtisanPage() {
 
         const isRegistered = Number(artisanRecord?.registeredAt || 0) > 0;
         if (isRegistered && Boolean(verified)) {
-          setMessage("Wallet already registered and verified. Redirecting to product registration...");
+          setMessage({ type: "info", text: MESSAGES.redirecting });
           router.replace("/register-product");
         }
       } catch (_error) {
@@ -99,35 +122,32 @@ export default function ArtisanPage() {
   function getAnonStatusMeta(status) {
     if (status === "logged-in") {
       return {
-        bg: "#ddf9eb",
-        color: "#186d4c",
-        label: "Anon Aadhaar proof verified locally"
+        type: "success",
+        label: "Identity verified - Your Aadhaar proof is ready"
       };
     }
 
     if (status === "logging-in") {
       return {
-        bg: "#fff1d1",
-        color: "#8a5b09",
-        label: "Generating proof..."
+        type: "progress",
+        label: "Generating your privacy-preserving proof..."
       };
     }
 
     return {
-      bg: "#ffe9e9",
-      color: "#8a1f1f",
-      label: "Proof not completed"
+      type: "warning",
+      label: "Please complete identity verification to continue"
     };
   }
 
   async function onSyncAadhaarOnChain() {
     if (!isAnonVerified) {
-      setMessage("Complete Anon Aadhaar proof first.");
+      setMessage({ type: "warning", text: "Please complete your Aadhaar verification first." });
       return;
     }
 
     setSyncingAadhaar(true);
-    setMessage("");
+    setMessage({ type: "", text: "" });
 
     try {
       const connected = await connectWallet();
@@ -135,14 +155,13 @@ export default function ArtisanPage() {
 
       await markAadhaarVerified(connected.address);
       setAadhaarSyncedOnChain(true);
-      setMessage("Aadhaar verification synced on-chain for this wallet. Now click Register Artisan to mint identity.");
+      setMessage({ type: "success", text: MESSAGES.aadhaarSynced });
     } catch (error) {
       setAadhaarSyncedOnChain(false);
-      setMessage(
-        error?.shortMessage ||
-        error?.message ||
-        "Could not sync Aadhaar status on-chain. Ensure this wallet has verifier role."
-      );
+      setMessage({
+        type: "error",
+        text: error?.shortMessage || error?.message || MESSAGES.aadhaarSyncFailed
+      });
     } finally {
       setSyncingAadhaar(false);
     }
@@ -171,12 +190,11 @@ export default function ArtisanPage() {
           return;
         }
         setAadhaarSyncedOnChain(true);
-        setMessage("Anon Aadhaar verified and auto-synced on-chain.");
+        setMessage({ type: "success", text: "Identity verified and synced automatically." });
       } catch (_error) {
         if (!active) {
           return;
         }
-        // Non-blocking: keep manual sync available even if auto sync fails.
         setAadhaarSyncedOnChain(false);
       } finally {
         if (active) {
@@ -196,9 +214,9 @@ export default function ArtisanPage() {
     try {
       const result = await connectWallet();
       setWallet(result.address);
-      setMessage("Wallet connected.");
+      setMessage({ type: "success", text: MESSAGES.walletConnected });
     } catch (error) {
-      setMessage(error?.message || "Failed to connect wallet.");
+      setMessage({ type: "error", text: error?.message || MESSAGES.walletFailed });
     }
   }
 
@@ -229,24 +247,21 @@ export default function ArtisanPage() {
 
     if (score >= 80) {
       return {
-        bg: "#ddf9eb",
-        color: "#186d4c",
-        text: "Excellent craft signature detected"
+        type: "success",
+        text: MESSAGES.scoreHigh
       };
     }
 
     if (score >= 60) {
       return {
-        bg: "#fff1d1",
-        color: "#8a5b09",
-        text: "Craft signature verified"
+        type: "info",
+        text: MESSAGES.scoreMedium
       };
     }
 
     return {
-      bg: "#ffe0e0",
-      color: "#8a1f1f",
-      text: "Craft signature not detected — registration blocked"
+      type: "error",
+      text: MESSAGES.scoreLow
     };
   }
 
@@ -256,7 +271,7 @@ export default function ArtisanPage() {
     }
 
     setIsAnalyzing(true);
-    setMessage("");
+    setMessage({ type: "", text: "" });
     setSuccess(null);
 
     try {
@@ -264,7 +279,7 @@ export default function ArtisanPage() {
       setCraftScore(score);
     } catch (error) {
       setCraftScore(null);
-      setMessage(error?.message || "Could not analyze the selected image.");
+      setMessage({ type: "error", text: error?.message || "Could not analyze the image. Please try again." });
     } finally {
       setIsAnalyzing(false);
     }
@@ -274,7 +289,7 @@ export default function ArtisanPage() {
     const file = event.target.files?.[0] || null;
     setCraftImage(file);
     setCraftScore(null);
-    setMessage("");
+    setMessage({ type: "", text: "" });
     setSuccess(null);
 
     if (!file) {
@@ -296,9 +311,9 @@ export default function ArtisanPage() {
   }
 
   async function onTryFakeDemo() {
-    setMessage("");
+    setMessage({ type: "", text: "" });
     setSuccess(null);
-    setStepProgress("");
+    setCurrentStep(-1);
 
     try {
       setIsAnalyzing(true);
@@ -314,13 +329,18 @@ export default function ArtisanPage() {
       setCraftImage(demoFile);
       setImagePreviewUrl(URL.createObjectURL(demoFile));
 
-      // Run detector to mimic the real path, then force stable demo output.
       await detectCraft(demoFile, form.craft);
       setCraftScore(22);
-      setMessage("This stock image scored 22. Registration blocked at the contract level.");
+      setMessage({ 
+        type: "error", 
+        text: "This stock image scored 22/100. Registration is blocked because the system could not detect authentic craft patterns." 
+      });
     } catch (_error) {
       setCraftScore(22);
-      setMessage("This stock image scored 22. Registration blocked at the contract level.");
+      setMessage({ 
+        type: "error", 
+        text: "This stock image scored 22/100. Registration is blocked because the system could not detect authentic craft patterns." 
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -346,39 +366,38 @@ export default function ArtisanPage() {
     event.preventDefault();
 
     if (!isAnonVerified) {
-      setMessage("Please complete Anon Aadhaar verification before registering.");
+      setMessage({ type: "warning", text: "Please complete identity verification before registering." });
       return;
     }
 
     if (!craftImage) {
-      setMessage("Please upload a craft image before registering.");
+      setMessage({ type: "warning", text: "Please upload a photo of your craft work." });
       return;
     }
 
     if (typeof craftScore !== "number") {
-      setMessage("Craft score missing. Please upload and analyze your craft image first.");
+      setMessage({ type: "warning", text: "Please wait for the craft analysis to complete." });
       return;
     }
 
     if (craftScore < 60) {
-      setMessage("Craft signature not detected — registration blocked");
+      setMessage({ type: "error", text: MESSAGES.scoreLow });
       return;
     }
 
     setLoading(true);
     setSuccess(null);
-    setMessage("");
-    setStepProgress("Step 1/3: Uploading craft image to IPFS...");
+    setMessage({ type: "", text: "" });
+    setCurrentStep(0);
 
     try {
-      setStepProgress("Step 1/3: Connecting wallet...");
       const connected = await connectWallet();
       setWallet(connected.address);
 
-      setStepProgress("Step 2/3: Uploading craft image to IPFS...");
+      setCurrentStep(1);
       await uploadToIPFS(craftImage);
 
-      setStepProgress("Step 3/3: Confirming on Sepolia...");
+      setCurrentStep(2);
 
       const receipt = await registerArtisan(
         form.name.trim(),
@@ -395,23 +414,23 @@ export default function ArtisanPage() {
         tokenId,
         txUrl
       });
-      setMessage("Artisan identity minted successfully. Redirecting to product registration...");
+      setMessage({ type: "success", text: MESSAGES.registered });
       setTimeout(() => {
         router.push("/register-product");
-      }, 1200);
+      }, 1500);
     } catch (error) {
       const raw = String(error?.shortMessage || error?.message || "").toLowerCase();
 
       if (raw.includes("craft score too low") || raw.includes("below 60")) {
-        setMessage("Smart contract rejected: craft score below 60");
+        setMessage({ type: "error", text: "The blockchain rejected this registration because the craft score is too low. Please upload a clearer image of your authentic craft work." });
       } else if (raw.includes("already registered") || raw.includes("artisan already registered")) {
-        setMessage("This wallet already has an artisan identity. Registration was skipped.");
+        setMessage({ type: "info", text: MESSAGES.alreadyRegistered });
       } else {
-        setMessage(error?.shortMessage || error?.message || "Registration failed.");
+        setMessage({ type: "error", text: error?.shortMessage || error?.message || "Registration could not be completed. Please try again." });
       }
     } finally {
       setLoading(false);
-      setStepProgress("");
+      setCurrentStep(-1);
     }
   }
 
@@ -428,257 +447,238 @@ export default function ArtisanPage() {
 
   if (!hydrated) {
     return (
-      <section style={{ display: "grid", gap: 16 }}>
-        <h1 style={{ margin: 0 }}>Register as Artisan</h1>
-        <p style={{ margin: 0, color: "#466" }}>Loading secure verification...</p>
+      <section style={{ display: "grid", gap: "var(--space-lg)" }}>
+        <h1 className="page-title">Register as Artisan</h1>
+        <StatusMessage type="progress" message="Loading secure verification..." />
       </section>
     );
   }
 
   return (
-    <section style={{ display: "grid", gap: 16 }}>
-      <h1 style={{ margin: 0 }}>Register as Artisan</h1>
-      <p style={{ margin: 0, color: "#466" }}>Only submissions with craft score 60+ pass the on-chain gate.</p>
+    <section style={{ display: "grid", gap: "var(--space-lg)" }}>
+      <div>
+        <h1 className="page-title">Register as Artisan</h1>
+        <p className="page-subtitle" style={{ marginTop: "var(--space-sm)" }}>
+          Create your verified artisan identity. Only authentic craft with a score of 60 or higher will be accepted.
+        </p>
+      </div>
 
-      <button onClick={onConnect} style={buttonStyle}>
-        {wallet ? "Connected: " + wallet.slice(0, 8) + "..." : "Connect Wallet"}
+      {/* Wallet Connection */}
+      <button 
+        onClick={onConnect} 
+        className="btn-base btn-primary"
+        style={{ width: "fit-content" }}
+        aria-label={wallet ? "Wallet connected" : "Connect wallet"}
+      >
+        {wallet ? `Connected: ${wallet.slice(0, 8)}...${wallet.slice(-4)}` : "Connect Wallet"}
       </button>
 
-      <form onSubmit={onSubmit} style={formStyle}>
-        <input
-          required
-          placeholder="Artisan name"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          style={inputStyle}
-        />
+      <form onSubmit={onSubmit} className="card-form form-container">
+        {/* Artisan Name */}
+        <div>
+          <label htmlFor="artisan-name" className="sr-only">Artisan name</label>
+          <input
+            id="artisan-name"
+            required
+            placeholder="Your name as an artisan"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className="input-base"
+          />
+        </div>
 
-        <select
-          required
-          value={form.craft}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              craft: e.target.value,
-              giRegion: giRegions[e.target.value] || ""
-            })
-          }
-          style={inputStyle}
-        >
-          {craftTypes.map((craftType) => (
-            <option key={craftType} value={craftType}>
-              {craftType}
-            </option>
-          ))}
-        </select>
-
-        <input
-          required
-          placeholder="GI Region"
-          value={form.giRegion}
-          readOnly
-          style={inputStyle}
-        />
-
-        <div
-          style={{
-            border: "1px solid #d9ebe4",
-            borderRadius: 10,
-            padding: 12,
-            background: "#f8fcfa",
-            display: "grid",
-            gap: 10
-          }}
-        >
-          <div style={{ fontWeight: 700, color: "#1f5b4b" }}>Anon Aadhaar Verification</div>
-          <div
-            style={{
-              background: anonStatusInfo.bg,
-              color: anonStatusInfo.color,
-              border: "1px solid " + anonStatusInfo.color,
-              borderRadius: 8,
-              padding: "8px 10px",
-              fontWeight: 700
-            }}
+        {/* Craft Type */}
+        <div>
+          <label htmlFor="craft-type" className="sr-only">Craft type</label>
+          <select
+            id="craft-type"
+            required
+            value={form.craft}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                craft: e.target.value,
+                giRegion: giRegions[e.target.value] || ""
+              })
+            }
+            className="input-base"
           >
-            {anonStatusInfo.label}
-          </div>
+            {craftTypes.map((craftType) => (
+              <option key={craftType} value={craftType}>
+                {craftType}
+              </option>
+            ))}
+          </select>
+        </div>
 
-          <LogInWithAnonAadhaar nullifierSeed={aadhaarNullifierSeed} fieldsToReveal={[]} />
+        {/* GI Region */}
+        <div>
+          <label htmlFor="gi-region" className="sr-only">GI Region</label>
+          <input
+            id="gi-region"
+            required
+            placeholder="GI Region"
+            value={form.giRegion}
+            readOnly
+            className="input-base"
+            style={{ background: "#f8f8f8" }}
+          />
+        </div>
+
+        {/* Anon Aadhaar Section */}
+        <div className="card-base" style={{ background: "#f8fcfa" }}>
+          <div style={{ fontWeight: 700, color: "var(--color-primary-dark)", marginBottom: "var(--space-md)" }}>
+            Identity Verification
+          </div>
+          
+          <StatusMessage type={anonStatusInfo.type} message={anonStatusInfo.label} animate={false} />
+
+          <div style={{ marginTop: "var(--space-md)" }}>
+            <LogInWithAnonAadhaar nullifierSeed={aadhaarNullifierSeed} fieldsToReveal={[]} />
+          </div>
 
           <button
             type="button"
             onClick={onSyncAadhaarOnChain}
             disabled={!isAnonVerified || syncingAadhaar}
-            style={{
-              ...buttonStyle,
-              background: !isAnonVerified || syncingAadhaar ? "#9bc2b4" : "#1D9E75"
-            }}
+            className="btn-base btn-primary"
+            style={{ marginTop: "var(--space-md)", width: "100%" }}
           >
             {syncingAadhaar
-              ? "Syncing Aadhaar..."
+              ? "Syncing to blockchain..."
               : aadhaarSyncedOnChain
-                ? "Aadhaar Synced On-Chain"
-                : "Sync Aadhaar Status On-Chain (wallet prompt)"}
+                ? "Identity Verified On-Chain"
+                : "Confirm Identity On-Chain"}
           </button>
 
           {aadhaarSyncedOnChain && (
-            <div
-              style={{
-                border: "1px solid #3e9f74",
-                background: "#dcf8e8",
-                color: "#1c664c",
-                borderRadius: 8,
-                padding: "8px 10px",
-                fontWeight: 700
-              }}
-            >
-              On-chain Aadhaar flag updated for connected wallet.
+            <div style={{ marginTop: "var(--space-md)" }}>
+              <StatusMessage type="success" message="Your identity is now verified on the blockchain." animate={false} />
             </div>
           )}
         </div>
 
-        <input
-          required
-          type="file"
-          accept="image/*"
-          onChange={onImageChange}
-          style={inputStyle}
-        />
+        {/* Craft Image Upload */}
+        <div>
+          <label 
+            htmlFor="craft-image" 
+            style={{ 
+              display: "block", 
+              marginBottom: "var(--space-sm)", 
+              fontWeight: 600,
+              color: "var(--color-text-primary)"
+            }}
+          >
+            Upload a photo of your craft work
+          </label>
+          <input
+            id="craft-image"
+            required
+            type="file"
+            accept="image/*"
+            onChange={onImageChange}
+            className="input-base"
+            style={{ padding: "var(--space-sm)" }}
+          />
+        </div>
 
+        {/* Image Preview */}
         {imagePreviewUrl && (
-          <div style={{ display: "grid", gap: 8 }}>
-            <img
-              src={imagePreviewUrl}
-              alt="Craft preview"
-              style={{ width: "100%", maxWidth: 360, borderRadius: 10, border: "1px solid #d3e6df" }}
-            />
-          </div>
+          <img
+            src={imagePreviewUrl}
+            alt="Preview of your craft work"
+            className="image-preview"
+          />
         )}
 
+        {/* Analysis Status */}
         {isAnalyzing && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div className="spinner" />
-            <span style={{ color: "#355" }}>Analyzing craft authenticity...</span>
-          </div>
+          <StatusMessage type="progress" message={MESSAGES.analyzing} />
         )}
 
+        {/* Craft Score Display */}
         {scoreInfo && (
-          <div
-            style={{
-              background: scoreInfo.bg,
-              color: scoreInfo.color,
-              border: "1px solid " + scoreInfo.color,
-              borderRadius: 10,
-              padding: "8px 10px",
-              fontWeight: 700
-            }}
-          >
-            Score: {craftScore} - {scoreInfo.text}
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 700,
+                fontSize: 16,
+                background: scoreInfo.type === "success" ? "var(--color-success-bg)" : 
+                           scoreInfo.type === "info" ? "var(--color-info-bg)" : "var(--color-error-bg)",
+                color: scoreInfo.type === "success" ? "var(--color-success)" : 
+                       scoreInfo.type === "info" ? "var(--color-info)" : "var(--color-error)",
+                border: `2px solid ${scoreInfo.type === "success" ? "var(--color-success)" : 
+                        scoreInfo.type === "info" ? "var(--color-info)" : "var(--color-error)"}`,
+                flexShrink: 0
+              }}
+            >
+              {craftScore}
+            </div>
+            <StatusMessage type={scoreInfo.type} message={scoreInfo.text} animate={false} />
           </div>
         )}
 
-        <button type="button" onClick={onTryFakeDemo} style={demoButtonStyle}>
-          Try Fake Artisan Demo
+        {/* Demo Button */}
+        <button 
+          type="button" 
+          onClick={onTryFakeDemo} 
+          className="btn-base btn-demo"
+          style={{ width: "fit-content" }}
+        >
+          Try Demo with Stock Image
         </button>
 
-        <button disabled={registerDisabled} type="submit" style={buttonStyle}>
-          {loading ? "Submitting..." : "Register Artisan"}
+        {/* Submit Button */}
+        <button 
+          disabled={registerDisabled} 
+          type="submit" 
+          className="btn-base btn-primary"
+          style={{ width: "100%" }}
+        >
+          {loading ? "Creating your artisan identity..." : "Register as Artisan"}
         </button>
 
-        {stepProgress && (
-          <div
-            style={{
-              border: "1px dashed #b4d8cb",
-              borderRadius: 8,
-              padding: "8px 10px",
-              color: "#2f5a50",
-              background: "#eff8f4"
-            }}
-          >
-            {stepProgress}
-          </div>
+        {/* Progress Steps */}
+        {currentStep >= 0 && (
+          <ProgressSteps currentStep={currentStep} steps={registrationSteps} />
         )}
       </form>
 
-      {message && <p style={{ margin: 0, color: "#355" }}>{message}</p>}
+      {/* Status Message */}
+      {message.text && (
+        <div className="form-container">
+          <StatusMessage type={message.type || "info"} message={message.text} />
+        </div>
+      )}
 
+      {/* Success Card */}
       {success && (
-        <div
-          style={{
-            marginTop: 4,
-            background: "#dcf8e8",
-            border: "1px solid #3e9f74",
-            borderRadius: 10,
-            padding: "10px 12px",
-            color: "#1c664c"
-          }}
-        >
-          <div style={{ fontWeight: 700 }}>Soulbound Identity minted successfully.</div>
-          <div>SBT Token ID: {success.tokenId}</div>
+        <div className="card-base form-container" style={{ borderColor: "var(--color-success)" }}>
+          <div style={{ fontWeight: 700, color: "var(--color-success)", marginBottom: "var(--space-sm)" }}>
+            Your Artisan Identity is Ready
+          </div>
+          <p style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+            Your unique artisan token (SBT) ID: <strong>{success.tokenId}</strong>
+          </p>
           {success.txUrl && (
-            <a href={success.txUrl} target="_blank" rel="noreferrer" style={{ color: "#116f4f", fontWeight: 700 }}>
-              View on Etherscan
+            <a 
+              href={success.txUrl} 
+              target="_blank" 
+              rel="noreferrer" 
+              className="link-primary"
+              style={{ marginTop: "var(--space-sm)", display: "inline-block" }}
+            >
+              View transaction on Etherscan
             </a>
           )}
         </div>
       )}
-
-      <style jsx>{`
-        .spinner {
-          width: 18px;
-          height: 18px;
-          border: 2px solid #d5ebe3;
-          border-top-color: #1d9e75;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
     </section>
   );
 }
-
-const formStyle = {
-  display: "grid",
-  gap: 10,
-  maxWidth: 560,
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14
-};
-
-const inputStyle = {
-  border: "1px solid #cfe2db",
-  borderRadius: 8,
-  padding: "10px 12px",
-  fontSize: 14
-};
-
-const buttonStyle = {
-  background: "#1D9E75",
-  color: "white",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content"
-};
-
-const demoButtonStyle = {
-  background: "#fff5f5",
-  color: "#8a1f1f",
-  border: "1px solid #e9bcbc",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content"
-};
