@@ -1,44 +1,35 @@
 const path = require("path");
 
+// Stub path for optional dependencies that are not installed
+const emptyStub = path.resolve(__dirname, "stubs/empty.js");
+
+// List of optional SDKs that @wagmi/connectors lazily imports but are not installed
+const optionalDeps = [
+  "porto",
+  "porto/internal",
+  "@base-org/account",
+  "@coinbase/wallet-sdk",
+  "@metamask/sdk",
+  "@safe-global/safe-apps-sdk",
+  "@safe-global/safe-apps-provider",
+  "@walletconnect/ethereum-provider",
+  "@react-native-async-storage/async-storage"
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: path.resolve(__dirname),
-  
-  // Turbopack config (Next.js 16+ default bundler)
-  // Alias optional dependencies that @wagmi/connectors lazily imports
+
+  // Turbopack config (Next.js 16+ default bundler).
+  // Turbopack does NOT support `false` as an alias value — point to a real stub file instead.
   turbopack: {
-    resolveAlias: {
-      "porto": false,
-      "porto/internal": false,
-      "@base-org/account": false,
-      "@coinbase/wallet-sdk": false,
-      "@metamask/sdk": false,
-      "@safe-global/safe-apps-sdk": false,
-      "@safe-global/safe-apps-provider": false,
-      "@walletconnect/ethereum-provider": false,
-      "@react-native-async-storage/async-storage": false
-    }
+    resolveAlias: Object.fromEntries(optionalDeps.map((dep) => [dep, emptyStub]))
   },
-  
-  // Keep webpack config for compatibility
+
+  // Webpack config for non-Turbopack builds.
   webpack: (config) => {
     config.resolve = config.resolve || {};
     config.resolve.alias = config.resolve.alias || {};
-
-    // @wagmi/connectors lazily imports several optional SDKs.
-    // Alias each one to `false` so Webpack treats them as empty modules
-    // instead of failing the build. Also alias react-native-async-storage.
-    const optionalDeps = [
-      "porto",
-      "porto/internal",
-      "@base-org/account",
-      "@coinbase/wallet-sdk",
-      "@metamask/sdk",
-      "@safe-global/safe-apps-sdk",
-      "@safe-global/safe-apps-provider",
-      "@walletconnect/ethereum-provider",
-      "@react-native-async-storage/async-storage"
-    ];
 
     for (const dep of optionalDeps) {
       config.resolve.alias[dep] = false;
