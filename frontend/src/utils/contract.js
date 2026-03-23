@@ -79,6 +79,36 @@ const LEGACY_PRODUCT_REGISTER_ABI = [
     }
 ];
 
+const LEGACY_PRODUCT_VERIFY_ABI = [
+    {
+        inputs: [{ internalType: "bytes32", name: "hash", type: "bytes32" }],
+        name: "verifyProduct",
+        outputs: [
+            {
+                components: [
+                    { internalType: "bytes32", name: "productHash", type: "bytes32" },
+                    { internalType: "string", name: "ipfsCid", type: "string" },
+                    { internalType: "address", name: "artisan", type: "address" },
+                    { internalType: "string", name: "productName", type: "string" },
+                    { internalType: "string", name: "giTag", type: "string" },
+                    { internalType: "uint256", name: "origin_lat", type: "uint256" },
+                    { internalType: "uint256", name: "origin_lng", type: "uint256" },
+                    { internalType: "uint256", name: "registeredAt", type: "uint256" },
+                    { internalType: "uint256", name: "transferCount", type: "uint256" },
+                    { internalType: "address[]", name: "handlers", type: "address[]" },
+                    { internalType: "bool[]", name: "handlerVerified", type: "bool[]" }
+                ],
+                internalType: "struct ProductRegistry.ProductRecord",
+                name: "",
+                type: "tuple"
+            },
+            { internalType: "uint8", name: "terroir", type: "uint8" }
+        ],
+        stateMutability: "view",
+        type: "function"
+    }
+];
+
 const injectedConnector = injected({ shimDisconnect: true });
 
 const config = createConfig({
@@ -167,6 +197,25 @@ function calculateRoyaltyBps(transferCount) {
     const safeTransferCount = Math.max(1, transferCount);
     const root = Math.max(1, Math.floor(Math.sqrt(safeTransferCount)));
     return Math.floor(4000 / root);
+}
+
+function normalizeProductRecord(record) {
+    return {
+        productHash: record?.productHash,
+        ipfsCid: record?.ipfsCid,
+        artisan: record?.artisan,
+        provenanceSigner: record?.provenanceSigner || ZERO_ADDRESS,
+        productName: record?.productName,
+        giTag: record?.giTag,
+        metadataHash: record?.metadataHash || ZERO_HASH,
+        deviceSignature: record?.deviceSignature || "0x",
+        origin_lat: record?.origin_lat,
+        origin_lng: record?.origin_lng,
+        registeredAt: record?.registeredAt,
+        transferCount: record?.transferCount,
+        handlers: Array.isArray(record?.handlers) ? record.handlers : [],
+        handlerVerified: Array.isArray(record?.handlerVerified) ? record.handlerVerified : []
+    };
 }
 
 let registerProductVariantCache = null;
@@ -820,15 +869,32 @@ export async function transferProduct(hash, newOwnerAddress, saleValueEth) {
 export async function verifyProduct(hash) {
     assertConfiguredAddress(PRODUCT_REGISTRY_ADDRESS, "PRODUCT_REGISTRY_ADDRESS");
 
-    const [record, terroirRaw] = await readContract(config, {
-        address: PRODUCT_REGISTRY_ADDRESS,
-        abi: PRODUCT_ABI,
-        functionName: "verifyProduct",
-        args: [hash]
-    });
+    let record;
+    let terroirRaw;
+
+    try {
+        [record, terroirRaw] = await readContract(config, {
+            address: PRODUCT_REGISTRY_ADDRESS,
+            abi: PRODUCT_ABI,
+            functionName: "verifyProduct",
+            args: [hash]
+        });
+    } catch (error) {
+        const detail = String(error?.shortMessage || error?.message || "").toLowerCase();
+        if (!detail.includes("position") && !detail.includes("bounds") && !detail.includes("decode")) {
+            throw error;
+        }
+
+        [record, terroirRaw] = await readContract(config, {
+            address: PRODUCT_REGISTRY_ADDRESS,
+            abi: LEGACY_PRODUCT_VERIFY_ABI,
+            functionName: "verifyProduct",
+            args: [hash]
+        });
+    }
 
     const terroir = Math.max(0, Math.min(100, Number(terroirRaw)));
-    return { record, terroir };
+    return { record: normalizeProductRecord(record), terroir };
 }
 
 export async function getArtisanTokenId(address) {

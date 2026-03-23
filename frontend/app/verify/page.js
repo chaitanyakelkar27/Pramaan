@@ -268,13 +268,14 @@ export default function VerifyPage() {
 
       <form onSubmit={onVerify} style={formStyle}>
         <input
+          suppressHydrationWarning
           required
           value={hash}
           onChange={(e) => setHash(e.target.value)}
           placeholder="0x..."
           style={inputStyle}
         />
-        <button disabled={loading} type="submit" style={buttonStyle}>
+        <button suppressHydrationWarning disabled={loading} type="submit" style={buttonStyle}>
           {loading ? "Verifying..." : "Verify Product"}
         </button>
       </form>
