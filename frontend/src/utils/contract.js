@@ -11,7 +11,15 @@ import {
 } from "@wagmi/core";
 import { injected } from "@wagmi/connectors";
 import { sepolia } from "wagmi/chains";
-import { encodeFunctionData, formatEther, parseEther, toHex } from "viem";
+import {
+    encodeAbiParameters,
+    encodeFunctionData,
+    formatEther,
+    keccak256,
+    parseAbiParameters,
+    parseEther,
+    toHex
+} from "viem";
 
 import {
     ARTISAN_ABI,
@@ -773,7 +781,7 @@ export async function registerProduct(hash, cid, name, giTag, lat, lng) {
     assertConfiguredAddress(ARTISAN_REGISTRY_ADDRESS, "ARTISAN_REGISTRY_ADDRESS");
     assertConfiguredAddress(PRODUCT_REGISTRY_ADDRESS, "PRODUCT_REGISTRY_ADDRESS");
 
-    const artisanAddress = await getConnectedAddress();
+    const { signer, address: artisanAddress } = await connectWallet();
     const verified = Boolean(await isVerifiedForProductRegistry(artisanAddress));
     if (!verified) {
         throw new Error("Only verified artisans can register products on this ProductRegistry deployment.");
@@ -794,9 +802,32 @@ export async function registerProduct(hash, cid, name, giTag, lat, lng) {
         throw new Error("Product already registered. Use a new image/hash.");
     }
 
-    const metadataHash = hash;
+    const metadataHash = keccak256(
+        encodeAbiParameters(
+            parseAbiParameters("bytes32,string,string,string,uint256,uint256,address"),
+            [hash, cid, name, giTag, latitude, longitude, artisanAddress]
+        )
+    );
     const provenanceSigner = artisanAddress;
-    const deviceSignature = "0x";
+    const attestationDigest = keccak256(
+        encodeAbiParameters(
+            parseAbiParameters("uint256,address,bytes32,bytes32,address,address,string,string,string,uint256,uint256"),
+            [
+                BigInt(CHAIN_ID),
+                PRODUCT_REGISTRY_ADDRESS,
+                hash,
+                metadataHash,
+                artisanAddress,
+                provenanceSigner,
+                cid,
+                name,
+                giTag,
+                latitude,
+                longitude
+            ]
+        )
+    );
+    const deviceSignature = await signer.signMessage({ message: { raw: attestationDigest } });
 
     const currentArgs = [
         hash,
