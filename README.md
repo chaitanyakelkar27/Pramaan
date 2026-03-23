@@ -1,99 +1,121 @@
 # Pramaan
 
-Pramaan is a blockchain-backed provenance and verification platform for GI/craft products. It uses Sepolia smart contracts plus a Next.js frontend to register artisans, register products, verify authenticity, track transfers, calculate trust (Terroir) score, and record demo evidence.
+Pramaan is a Sepolia-based provenance and trust platform for GI/craft products. It combines artisan identity verification, AI-assisted authenticity gating, on-chain product lifecycle tracking, dynamic royalties, and judge-ready monitoring/evidence tooling.
 
 ## Repository Structure
 
-- `blockchain/`: Hardhat project (contracts, deploy, sync scripts)
-- `frontend/`: Next.js app (artisan/product/verify/transfer/demo pages)
-- `docs/`: Deployment and demo evidence documentation
+- `blockchain/`: Hardhat contracts, deployment scripts, env sync scripts, demo transaction generator.
+- `frontend/`: Next.js App Router UI, API routes, web3 helpers, monitor/evidence/checklist pages.
+- `docs/`: deployment runbook and demo evidence.
 
 ## What Is Implemented
 
-### 1) Smart Contracts (Sepolia-ready)
+## 1) Smart Contracts
 
-#### ArtisanRegistry
-- Soulbound identity token (non-transferable ERC721) for artisans.
-- Artisan registration with on-chain gating by craft score (`craftScore >= 60`).
+### ArtisanRegistry (`blockchain/contracts/ArtisanRegistry.sol`)
+
+Implemented:
+- Soulbound artisan identity token (non-transferable ERC721).
+- Artisan registration gate: `craftScore >= 60`.
+- Identity/trust layer:
+  - Aadhaar verification flag (`verifyAadhaar`, owner-controlled).
+  - Validator role management (`addValidator`, owner-controlled).
+  - Validator approval step (`approveArtisan`, validator-controlled).
+  - Verification status enforcement (`isVerifiedArtisan`).
+- Web-of-trust layer:
+  - Artisan vouching (`vouchFor`) with reputation threshold.
+  - Vouch counts (`getVouchedByCount`).
+  - Slashing (`slash`) for fraudulent artisan pathways.
+  - Reputation tracking for participants.
 - One-wallet-one-artisan registration check.
-- Public read methods for artisan profile and verification status.
 
-Contract file:
-- `blockchain/contracts/ArtisanRegistry.sol`
+### ProductRegistry (`blockchain/contracts/ProductRegistry.sol`)
 
-#### ProductRegistry
-- Product registration with:
-  - unique `productHash`
-  - IPFS CID
-  - artisan address
-  - provenance signer
-  - metadata hash
-  - optional device signature
-  - origin coordinates
-- Product transfer tracking with handler chain.
-- Handler verification check (`isVerifiedArtisan`) on each transfer.
-- Terroir score computation based on custody quality.
-- Quadratic royalty payout to original artisan during transfers.
-- One-time scan nonce checkpointing and replay detection.
+Implemented:
+- Product registration with required provenance fields:
+  - `productHash`, `ipfsCid`, `metadataHash`, `provenanceSigner`, device signature, origin coordinates.
+- Verified-artisan-only registration (`isVerifiedArtisan` gate).
+- AI authenticity gate at registration (`terroirScore >= 70`).
+- Product transfer tracking with handler chain and handler verification flags.
+- Dynamic tapered royalties via `calculateRoyalty` and `_taperedRoyaltyBps`.
+- Automatic royalty payout to the original artisan on transfer.
+- Terroir computation based on custody quality and suspicious transfer patterns.
+- Anti-clone scan nonce checkpointing and replay detection:
+  - `checkpointScanNonce`
+  - `isScanNonceUsed`
 
-Contract file:
-- `blockchain/contracts/ProductRegistry.sol`
+## 2) Frontend Application
 
-### 2) Frontend Application (Next.js)
+Main implemented user flows:
+- `/artisan`: wallet connect, trust badges, Aadhaar/validator actions, artisan registration, projected earnings panel.
+- `/register-product`: image upload, hashing, AI verification call, on-chain registration, QR generation, certificate view.
+- `/verify`: product lookup, trust status, handler chain timeline, terroir status, anti-replay nonce checkpoint.
+- `/transfer`: ownership transfer, tapered royalty preview, projected terroir impact.
 
-#### Main user flows
-- `/artisan`: artisan onboarding with craft image analysis and on-chain identity minting.
-- `/register-product`: product image hashing, IPFS upload, on-chain product registration, QR generation.
-- `/verify`: product verification, chain-of-custody timeline, terroir status, nonce replay check.
-- `/transfer`: ownership transfer with royalty preview and transfer execution.
+Operations/demo pages:
+- `/monitor`: live Sepolia event timeline (`ProductRegistered` + `ProductTransferred`).
+- `/checklist`: judge-demo navigation order.
+- `/evidence`: local evidence collector with markdown export.
 
-#### Demo and operations pages
-- `/monitor`: realtime `ProductRegistered` / `ProductTransferred` event stream.
-- `/checklist`: quick navigation for demo sequence.
-- `/evidence`: local transaction evidence capture and markdown export.
+UI system implemented:
+- Tailwind + shadcn-style component primitives.
+- Responsive layout and modern app shell.
+- Light/dark theming via `next-themes`.
 
-Key frontend files:
-- `frontend/app/artisan/page.js`
-- `frontend/app/register-product/page.js`
-- `frontend/app/verify/page.js`
-- `frontend/app/transfer/page.js`
-- `frontend/app/monitor/page.js`
-- `frontend/app/evidence/page.js`
+## 3) AI Verification API
+
+Implemented route:
+- `frontend/app/api/verify-craft/route.js`
+
+Behavior:
+- Accepts uploaded image via multipart form data.
+- Calls OpenAI Vision or Gemini Vision based on configured API keys.
+- Enforces normalized JSON response shape: `terroir_score` + `reason`.
+- Includes controlled fallback mode when no AI key is configured (demo continuity).
+
+## 4) Web3 Integration Layer
+
+Implemented in:
+- `frontend/src/utils/abi.js`
 - `frontend/src/utils/contract.js`
-- `frontend/src/utils/hash.js`
-- `frontend/src/utils/evidence.js`
 
-### 3) Deployment Tooling
+Includes:
+- Updated ABI surfaces for trust + AI + royalty changes.
+- Wallet connect and Sepolia enforcement.
+- Artisan registration + product registration helpers.
+- Transfer helper with royalty-aware value handling.
+- Trust helper calls (`verifyAadhaar`, `approveArtisan`, `vouchFor`, reputation/vouch reads).
+- Nonce checkpoint and replay checks.
 
-Implemented deployment scripts in `blockchain/package.json`:
-- `npm run preflight:sepolia`: validates deployment prerequisites.
-- `npm run deploy:sepolia`: deploy contracts to Sepolia.
-- `npm run sync:frontend:sepolia`: sync deployed addresses to frontend env.
-- `npm run deploy:sepolia:sync`: preflight + deploy + sync.
-- `npm run deploy:sepolia:full`: deploy/sync + optional verify command.
-- `npm run demo:tx:sepolia`: generates real demo transactions for evidence.
+## 5) Deployment and Demo Tooling
 
-Deployment artifacts:
-- `blockchain/deployed.sepolia.json` (addresses, deploy tx hashes, explorer links)
-- `blockchain/demo-tx.sepolia.json` (demo transaction set)
+Implemented scripts (`blockchain/package.json`):
+- `preflight:sepolia`
+- `deploy:sepolia`
+- `verify:sepolia`
+- `sync:frontend:sepolia`
+- `deploy:sepolia:sync`
+- `deploy:sepolia:full`
+- `demo:tx:sepolia`
 
-### 4) Evidence Documentation
+Implemented artifacts:
+- `blockchain/deployed.sepolia.json`
+- `blockchain/demo-tx.sepolia.json`
 
-- Demo evidence template with contract addresses and transaction links:
-  - `docs/demo-evidence.md`
-- Deployment runbook:
-  - `docs/deploy-ready.md`
+Docs in place:
+- `docs/deploy-ready.md`
+- `docs/demo-evidence.md`
 
-## Current Sepolia Deployment (from repository artifacts)
+## Current Sepolia Deployment Snapshot
 
-From `blockchain/deployed.sepolia.json`:
-- Network: Sepolia (11155111)
+From repository artifacts:
+- Network: Sepolia (`11155111`)
 - ArtisanRegistry: `0xebbc94929cAa7ccFcDB92D879dF3305184ec3589`
 - ProductRegistry: `0xe6f5eBb08532AD11A2b4Fb4dCa9aD4BDBffcF738`
 
 ## Local Setup
 
-## 1) Blockchain setup
+## 1) Blockchain
 
 ```bash
 cd blockchain
@@ -104,31 +126,37 @@ cp .env.example .env
 Set in `blockchain/.env`:
 - `ALCHEMY_SEPOLIA_URL`
 - `PRIVATE_KEY`
-- `ETHERSCAN_API_KEY` (optional)
+- `ETHERSCAN_API_KEY` (optional, for verification)
 
-Deploy and sync:
+Deploy and sync frontend env:
 
 ```bash
 npm run deploy:sepolia:sync
 ```
 
-## 2) Frontend setup
+Generate demo transactions:
+
+```bash
+npm run demo:tx:sepolia
+```
+
+## 2) Frontend
 
 ```bash
 cd frontend
 npm install
 ```
 
-Create/update `frontend/.env.local` with:
+Create/update `frontend/.env.local`:
 - `NEXT_PUBLIC_ARTISAN_REGISTRY_ADDRESS`
 - `NEXT_PUBLIC_PRODUCT_REGISTRY_ADDRESS`
 - `NEXT_PUBLIC_RPC_URL`
 - `NEXT_PUBLIC_WS_RPC_URL`
 - `NEXT_PUBLIC_WEB3STORAGE_TOKEN`
-- `NEXT_PUBLIC_CRAFT_MODEL_INFERENCE_URL` (optional)
+- `OPENAI_API_KEY` or `GEMINI_API_KEY` (recommended for real AI mode)
 - `NEXT_PUBLIC_VERCEL_URL` (optional)
 
-Run app:
+Run locally:
 
 ```bash
 npm run dev
@@ -140,40 +168,23 @@ Build check:
 npm run build
 ```
 
-## How Trust and Ownership Are Computed
+## Demo Story (Implemented End-to-End)
 
-- Registration starts with baseline trust score.
-- Each transfer appends handler and whether that handler is verified artisan.
-- Unverified handlers reduce score.
-- Additional penalties apply for suspicious transfer patterns.
-- Score bands shown in verify flow:
-  - authentic
-  - caution
-  - compromised
+1. Onboard artisan and show trust badges (Aadhaar, validator, reputation).
+2. Register product with AI authenticity gate + on-chain provenance fields.
+3. Transfer ownership with automatic royalty settlement.
+4. Verify product trust trail and demonstrate nonce anti-replay.
+5. Show live monitor and export evidence packet.
 
-## Pending Work (Current Gaps)
+## Current Limitations (Known, Explicit)
 
-The following items are pending based on current code and docs status:
-
-1. Identity verification before wallet operations
-- No Aadhaar/Udyam/mock KYC verification workflow exists before artisan onboarding.
-
-2. Custodial wallet onboarding
-- Wallet creation is currently browser-wallet based (MetaMask/injected wallet), not server-created custodial wallets.
-
-3. Secure server-side key management
-- No encrypted key vault/KMS/HSM flow exists for managed private key storage.
-
-4. Server-side transaction authorization
-- No OTP (or equivalent) authorization layer is implemented for server-side signing.
-
-5. On-chain provenance signature validation
-- Provenance signer/signature values are stored but not cryptographically validated on-chain.
-
-6. Proof packaging completion
-- Screenshot assets listed in `docs/demo-evidence.md` still need to be captured and attached.
+- Aadhaar verification is a mock on-chain flag, not a real external KYC integration.
+- Onboarding is currently non-custodial browser-wallet based (not embedded auto-wallet creation).
+- No server-side MPC/HSM key custody stack is implemented yet.
+- Provenance signer/device signature values are stored, but full cryptographic attestation policy is still minimal.
+- AI route supports a controlled fallback mode for demo when AI keys are absent.
 
 ## Notes
 
-- Etherscan contract verification is optional for functionality.
-- Node 20/22 is recommended for Hardhat stability (newer Node versions may show warnings).
+- Node.js 20/22 LTS is recommended for Hardhat stability.
+- Frontend builds cleanly with Next.js production build.
