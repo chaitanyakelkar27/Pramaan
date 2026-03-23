@@ -9,9 +9,11 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import TerritorScore from "../../components/TerritorScore";
-import { getArtisan, getArtisanTokenId, verifyProduct } from "../../src/utils/contract";
+import { checkpointScanNonce, getArtisan, getArtisanTokenId, isScanNonceUsed, verifyProduct } from "../../src/utils/contract";
+import { makeScanNonce } from "../../src/utils/hash";
 import { getIPFSUrl } from "../../src/utils/ipfs";
 import { PRODUCT_REGISTRY_ADDRESS, RPC_URL } from "../../src/utils/constants";
+import { appendEvidenceEntry } from "../../src/utils/evidence";
 
 const PRODUCT_REGISTERED_EVENT = {
   type: "event",
@@ -49,6 +51,28 @@ const publicClient = createPublicClient({
   transport: http(RPC_URL)
 });
 
+async function resolveAssetUrls(cid) {
+  const metadataUrl = getIPFSUrl(cid);
+
+  try {
+    const response = await fetch(metadataUrl, { cache: "no-store" });
+    if (!response.ok) {
+      return { metadataUrl, imageUrl: metadataUrl };
+    }
+
+    const json = await response.json();
+    const imageCid = String(json?.imageCid || json?.image || "").trim();
+    if (!imageCid) {
+      return { metadataUrl, imageUrl: metadataUrl };
+    }
+
+    const normalizedImageCid = imageCid.startsWith("ipfs://") ? imageCid.slice("ipfs://".length) : imageCid;
+    return { metadataUrl, imageUrl: getIPFSUrl(normalizedImageCid) };
+  } catch (_error) {
+    return { metadataUrl, imageUrl: metadataUrl };
+  }
+}
+
 export default function VerifyPage() {
   const [hash, setHash] = useState("");
   const [loading, setLoading] = useState(false);
@@ -56,6 +80,8 @@ export default function VerifyPage() {
   const [resultType, setResultType] = useState(RESULT.NONE);
   const [resultData, setResultData] = useState(null);
   const [autoVerified, setAutoVerified] = useState(false);
+  const [scanNonce, setScanNonce] = useState("");
+  const [checkpointLoading, setCheckpointLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -165,6 +191,10 @@ export default function VerifyPage() {
       const artisan = await getArtisan(record.artisan);
       const sbtId = await getArtisanTokenId(record.artisan);
       const eventMeta = await fetchProductEventMetadata(cleanHash);
+      const { metadataUrl, imageUrl } = await resolveAssetUrls(record.ipfsCid);
+      const activeNonce = /^0x[0-9a-fA-F]{64}$/.test(scanNonce) ? scanNonce : makeScanNonce();
+      const nonceUsed = Boolean(await isScanNonceUsed(cleanHash, activeNonce));
+      setScanNonce(activeNonce);
 
       const unverifiedCount = Array.isArray(record.handlerVerified)
         ? record.handlerVerified.filter((value) => !value).length
@@ -206,7 +236,14 @@ export default function VerifyPage() {
         registrationTxHash: eventMeta.registrationTxHash,
         unverifiedCount,
         handlerChain,
-        compromisedHandler
+        compromisedHandler,
+        nonce: activeNonce,
+        nonceUsed,
+        metadataUrl,
+        imageUrl,
+        metadataHash: record.metadataHash,
+        provenanceSigner: record.provenanceSigner,
+        hasDeviceSignature: String(record.deviceSignature || "0x") !== "0x"
       });
       setStatus("Verification complete.");
     } catch (error) {
@@ -228,6 +265,47 @@ export default function VerifyPage() {
   async function onVerify(event) {
     event.preventDefault();
     await runVerification(hash);
+  }
+
+  async function onCheckpointNonce() {
+    if (!resultData?.hash || !resultData?.nonce) {
+      setStatus("Verify a product first before checkpointing nonce.");
+      return;
+    }
+
+    setCheckpointLoading(true);
+    try {
+      const result = await checkpointScanNonce(resultData.hash, resultData.nonce);
+      const txHash = result?.receipt?.transactionHash || result?.receipt?.hash || "";
+      const replayed = Boolean(result?.replayed);
+
+      setResultData((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return {
+          ...prev,
+          nonceUsed: true,
+          replayed,
+          nonceTxUrl: txHash ? "https://sepolia.etherscan.io/tx/" + txHash : ""
+        };
+      });
+
+      if (txHash) {
+        appendEvidenceEntry({
+          action: "Nonce Checkpoint",
+          productHash: resultData.hash,
+          txUrl: "https://sepolia.etherscan.io/tx/" + txHash,
+          notes: replayed ? "Replay detected from verify page" : "Fresh nonce checkpoint from verify page"
+        });
+      }
+
+      setStatus(replayed ? "Replay detected and recorded on-chain." : "Fresh scan nonce recorded on-chain.");
+    } catch (error) {
+      setStatus(error?.shortMessage || error?.message || "Nonce checkpoint failed.");
+    } finally {
+      setCheckpointLoading(false);
+    }
   }
 
   const resultHeader = useMemo(() => {
@@ -281,6 +359,12 @@ export default function VerifyPage() {
               value={hash}
               onChange={(e) => setHash(e.target.value)}
               placeholder="0x..."
+            />
+            <Input
+              suppressHydrationWarning
+              value={scanNonce}
+              onChange={(e) => setScanNonce(e.target.value)}
+              placeholder="Scan nonce (optional bytes32; auto-generated if empty)"
             />
             <Button suppressHydrationWarning disabled={loading} type="submit" className="w-fit">
               {loading ? "Verifying..." : "Verify Product"}
@@ -394,13 +478,42 @@ export default function VerifyPage() {
               <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3 md:col-span-2">
                 <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">IPFS Image</p>
                 <a
-                  href={getIPFSUrl(resultData.record.ipfsCid)}
+                  href={resultData.imageUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="font-semibold text-[#176f52] no-underline"
                 >
                   Open original image
                 </a>
+              </div>
+
+              <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3 md:col-span-2">
+                <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">IPFS Metadata</p>
+                <a
+                  href={resultData.metadataUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-[#176f52] no-underline"
+                >
+                  Open attestation metadata
+                </a>
+              </div>
+
+              <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+                <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Metadata Hash</p>
+                <p className="m-0 break-all font-mono text-sm text-[#20473d]">{resultData.metadataHash || "-"}</p>
+              </div>
+
+              <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+                <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Provenance Signer</p>
+                <p className="m-0 break-all font-mono text-sm text-[#20473d]">{resultData.provenanceSigner || "-"}</p>
+              </div>
+
+              <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3 md:col-span-2">
+                <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Device Signature</p>
+                <p className="m-0 text-base font-medium text-[#20473d]">
+                  {resultData.hasDeviceSignature ? "Present" : "Missing"}
+                </p>
               </div>
 
               {resultData.registrationTxHash && (
@@ -416,6 +529,29 @@ export default function VerifyPage() {
                   </a>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="max-w-4xl">
+            <CardHeader className="pb-2">
+              <CardTitle>Nonce Replay Protection</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-[#355]">
+              <p className="m-0">Nonce: <span className="break-all font-mono">{resultData.nonce}</span></p>
+              <p className="m-0">Pre-check status: {resultData.nonceUsed ? "Already used (possible replay)" : "Not used yet"}</p>
+              {typeof resultData.replayed === "boolean" && (
+                <p className="m-0">Checkpoint result: {resultData.replayed ? "Replay detected" : "Fresh scan recorded"}</p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={onCheckpointNonce} disabled={checkpointLoading}>
+                  {checkpointLoading ? "Checkpointing..." : "Checkpoint Nonce On-Chain"}
+                </Button>
+                {resultData.nonceTxUrl && (
+                  <a href={resultData.nonceTxUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#176f52] no-underline">
+                    View nonce tx
+                  </a>
+                )}
+              </div>
             </CardContent>
           </Card>
 
