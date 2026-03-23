@@ -120,6 +120,18 @@ function ensureRootNodeModulesAccess(cwd) {
   }
 }
 
+function ensureRootPackageJson(cwd) {
+  const localPackageJson = path.join(cwd, "package.json");
+  const parentPackageJson = path.resolve(cwd, "..", "package.json");
+
+  if (!fs.existsSync(localPackageJson) || fs.existsSync(parentPackageJson)) {
+    return;
+  }
+
+  fs.copyFileSync(localPackageJson, parentPackageJson);
+  console.log("mirrored", localPackageJson, "->", parentPackageJson);
+}
+
 function main() {
   const cwd = process.cwd();
   const localNextDir = path.join(cwd, ".next");
@@ -133,6 +145,7 @@ function main() {
     mirrorFullNextDirToParent(localNextDir, parentNextDir);
     ensureManifestsInDir(parentNextDir, path.join(parentNextDir, "routes-manifest.json"));
     ensureRootNodeModulesAccess(cwd);
+    ensureRootPackageJson(cwd);
   }
 }
 
