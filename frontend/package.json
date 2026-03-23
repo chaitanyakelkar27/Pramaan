@@ -13,7 +13,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "next": "^14.2.33",
     "onnxruntime-web": "^1.24.3",
