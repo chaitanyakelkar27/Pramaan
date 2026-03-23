@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
 import TerritorScore from "../../components/TerritorScore";
 import { giRegions } from "../../src/utils/craftDetector";
 import { getArtisan, getArtisanTokenId, connectWallet, isVerifiedArtisan, registerProduct } from "../../src/utils/contract";
@@ -224,205 +228,203 @@ export default function RegisterProductPage() {
 
   if (checking) {
     return (
-      <section style={{ display: "grid", gap: 10 }}>
-        <h1 style={{ margin: 0 }}>Register Product</h1>
-        <p style={{ margin: 0, color: "#466" }}>Checking artisan identity...</p>
+      <section className="grid gap-3">
+        <h1 className="m-0 text-3xl font-bold text-[#20473d]">Register Product</h1>
+        <p className="m-0 text-[#49665e]">Checking artisan identity...</p>
       </section>
     );
   }
 
   if (!isVerified) {
     return (
-      <section style={{ display: "grid", gap: 10 }}>
-        <h1 style={{ margin: 0 }}>Register Product</h1>
-        <p style={{ margin: 0, color: "#8a1f1f", fontWeight: 600 }}>
+      <section className="grid gap-4">
+        <h1 className="m-0 text-3xl font-bold text-[#20473d]">Register Product</h1>
+        <p className="m-0 font-semibold text-[#8a1f1f]">
           {statusText || "You must register as an artisan before registering products."}
         </p>
-        {walletAddress && <p style={{ margin: 0, color: "#466" }}>Wallet: {walletAddress}</p>}
-        <p style={{ margin: 0, color: "#466" }}>SBT Token ID: {tokenId}</p>
-        <Link href="/artisan" style={linkStyle}>
-          Go to Artisan Registration
-        </Link>
+        <Card className="max-w-2xl bg-[#fff9f9]">
+          <CardContent className="grid gap-2 p-4 text-[#49665e]">
+            {walletAddress && <p className="m-0">Wallet: {walletAddress}</p>}
+            <p className="m-0">SBT Token ID: {tokenId}</p>
+            <Link href="/artisan" className="w-fit no-underline">
+              <Button>Go to Artisan Registration</Button>
+            </Link>
+          </CardContent>
+        </Card>
       </section>
     );
   }
 
   return (
-    <section style={{ display: "grid", gap: 16 }}>
-      <h1 style={{ margin: 0 }}>Register Product</h1>
-      <p style={{ margin: 0, color: "#466" }}>
-        Upload product proof, hash it, pin to IPFS, then register on-chain.
-      </p>
-
-      <div style={cardStyle}>
-        <h3 style={{ marginTop: 0, marginBottom: 10 }}>Verified Artisan</h3>
-        <p style={textStyle}>Wallet: {walletAddress}</p>
-        <p style={textStyle}>Name: {artisan?.name}</p>
-        <p style={textStyle}>Craft Type: {artisan?.craft}</p>
-        <p style={textStyle}>GI Region: {artisan?.giRegion || giRegions[String(artisan?.craft || "")] || "-"}</p>
-        <p style={textStyle}>Aadhaar Verified: {artisan?.isAadhaarVerified ? "Yes" : "No"}</p>
-        <p style={textStyle}>Fraud Flag: {artisan?.isFraudulent ? "Yes" : "No"}</p>
-        <p style={textStyle}>SBT Token ID: {tokenId}</p>
+    <section className="grid gap-6">
+      <div className="grid gap-2">
+        <h1 className="m-0 text-3xl font-bold text-[#20473d]">Register Product</h1>
+        <p className="m-0 text-[#49665e]">Upload product proof, hash it, pin to IPFS, then register on-chain.</p>
       </div>
 
-      <form onSubmit={onSubmit} style={formStyle}>
-        <input
-          required
-          placeholder="Product name (e.g. First Flush Darjeeling 2024)"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          style={inputStyle}
-        />
-        <input
-          required
-          placeholder="GI Tag"
-          value={form.giTag}
-          readOnly
-          style={inputStyle}
-        />
-        <input
-          required
-          type="number"
-          placeholder="Latitude"
-          value={form.lat}
-          onChange={(e) => setForm({ ...form, lat: e.target.value })}
-          style={inputStyle}
-        />
-        <input
-          required
-          type="number"
-          placeholder="Longitude"
-          value={form.lng}
-          onChange={(e) => setForm({ ...form, lng: e.target.value })}
-          style={inputStyle}
-        />
-
-        <input
-          type="number"
-          placeholder="Batch size (optional)"
-          value={form.batchSize}
-          onChange={(e) => setForm({ ...form, batchSize: e.target.value })}
-          style={inputStyle}
-        />
-
-        <input type="file" accept="image/*" required onChange={onImageChange} style={inputStyle} />
-
-        {previewUrl && (
-          <img
-            src={previewUrl}
-            alt="Product preview"
-            style={{ width: "100%", maxWidth: 360, borderRadius: 10, border: "1px solid #d3e6df" }}
-          />
-        )}
-
-        {productHash && (
-          <p style={{ margin: 0, color: "#2f5a50", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-            Product hash: {getTruncatedHash(productHash)}
-          </p>
-        )}
-
-        <button type="submit" disabled={loading} style={buttonStyle}>
-          {loading ? "Processing..." : "Register Product"}
-        </button>
-
-        {stepProgress && (
-          <div
-            style={{
-              border: "1px dashed #b4d8cb",
-              borderRadius: 8,
-              padding: "8px 10px",
-              color: "#2f5a50",
-              background: "#eff8f4"
-            }}
-          >
-            {stepProgress}
+      <Card className="max-w-4xl">
+        <CardHeader className="pb-2">
+          <CardTitle>Verified Artisan</CardTitle>
+          <CardDescription>This identity is eligible to register product twins.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3 md:col-span-2">
+            <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Wallet</p>
+            <p className="m-0 break-all font-mono text-sm text-[#20473d]">{walletAddress}</p>
           </div>
-        )}
-      </form>
 
-      {statusText && <p style={{ margin: 0, color: "#355" }}>{statusText}</p>}
+          <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+            <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Name</p>
+            <p className="m-0 text-lg font-semibold text-[#20473d]">{artisan?.name || "-"}</p>
+          </div>
+
+          <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+            <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">SBT Token ID</p>
+            <p className="m-0 text-lg font-semibold text-[#20473d]">{tokenId}</p>
+          </div>
+
+          <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+            <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Craft Type</p>
+            <p className="m-0 text-base font-medium text-[#20473d]">{artisan?.craft || "-"}</p>
+          </div>
+
+          <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+            <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">GI Region</p>
+            <p className="m-0 text-base font-medium text-[#20473d]">{artisan?.giRegion || giRegions[String(artisan?.craft || "")] || "-"}</p>
+          </div>
+
+          <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+            <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Aadhaar Status</p>
+            <div className="mt-1">
+              <Badge variant={artisan?.isAadhaarVerified ? "default" : "warm"}>
+                {artisan?.isAadhaarVerified ? "Verified" : "Not Verified"}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+            <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Fraud Flag</p>
+            <div className="mt-1">
+              <Badge variant={artisan?.isFraudulent ? "warm" : "default"}>
+                {artisan?.isFraudulent ? "Flagged" : "Clear"}
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-3xl">
+        <CardHeader className="pb-2">
+          <CardTitle>Product Metadata</CardTitle>
+          <CardDescription>All fields except batch size are required for on-chain registration.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit} className="grid gap-3">
+            <Input
+              required
+              placeholder="Product name (e.g. First Flush Darjeeling 2024)"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+            <Input
+              required
+              placeholder="GI Tag"
+              value={form.giTag}
+              readOnly
+            />
+            <Input
+              required
+              type="number"
+              placeholder="Latitude"
+              value={form.lat}
+              onChange={(e) => setForm({ ...form, lat: e.target.value })}
+            />
+            <Input
+              required
+              type="number"
+              placeholder="Longitude"
+              value={form.lng}
+              onChange={(e) => setForm({ ...form, lng: e.target.value })}
+            />
+
+            <Input
+              type="number"
+              placeholder="Batch size (optional)"
+              value={form.batchSize}
+              onChange={(e) => setForm({ ...form, batchSize: e.target.value })}
+            />
+
+            <Input type="file" accept="image/*" required onChange={onImageChange} />
+
+            {previewUrl && (
+              <img
+                src={previewUrl}
+                alt="Product preview"
+                className="w-full max-w-md rounded-xl border border-[#d3e6df]"
+              />
+            )}
+
+            {productHash && (
+              <p className="m-0 font-mono text-[#2f5a50]">
+                Product hash: {getTruncatedHash(productHash)}
+              </p>
+            )}
+
+            <Button type="submit" disabled={loading} className="w-fit">
+              {loading ? "Processing..." : "Register Product"}
+            </Button>
+
+            {stepProgress && (
+              <div className="rounded-lg border border-dashed border-[#b4d8cb] bg-[#eff8f4] px-3 py-2 text-[#2f5a50]">
+                {stepProgress}
+              </div>
+            )}
+          </form>
+        </CardContent>
+      </Card>
+
+      {statusText && <p className="m-0 text-[#355]">{statusText}</p>}
 
       {success && (
-        <div style={cardStyle}>
-          <h3 style={{ marginTop: 0, marginBottom: 8, color: "#1f6d50" }}>Registration Complete</h3>
-          <p style={textStyle}>Product hash: {success.productHash}</p>
-          <p style={textStyle}>
-            IPFS Image:{" "}
-            <a href={success.ipfsUrl} target="_blank" rel="noreferrer" style={linkStyle}>
-              {success.ipfsUrl}
-            </a>
-          </p>
-          {success.txUrl && (
-            <p style={textStyle}>
-              Etherscan:{" "}
-              <a href={success.txUrl} target="_blank" rel="noreferrer" style={linkStyle}>
-                View tx
+        <Card className="max-w-4xl">
+          <CardHeader className="pb-2">
+            <CardTitle>Registration Complete</CardTitle>
+            <CardDescription>Product twin has been anchored successfully.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2 text-[#355]">
+            <p className="m-0">Product hash: {success.productHash}</p>
+            <p className="m-0">
+              IPFS Image:{" "}
+              <a href={success.ipfsUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#176f52] no-underline">
+                {success.ipfsUrl}
               </a>
             </p>
-          )}
+            {success.txUrl && (
+              <p className="m-0">
+                Etherscan:{" "}
+                <a href={success.txUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#176f52] no-underline">
+                  View tx
+                </a>
+              </p>
+            )}
 
-          <div style={{ maxWidth: 340, marginTop: 12 }}>
-            <TerritorScore score={100} />
-          </div>
+            <div style={{ maxWidth: 340, marginTop: 12 }}>
+              <TerritorScore score={100} />
+            </div>
 
-          <p style={textStyle}>
-            Verification URL:{" "}
-            <Link href={success.verifyUrl} style={linkStyle}>
-              {success.verifyUrl}
+            <p className="m-0">
+              Verification URL:{" "}
+              <Link href={success.verifyUrl} className="font-semibold text-[#176f52] no-underline">
+                {success.verifyUrl}
+              </Link>
+            </p>
+
+            <Link href={success.transferUrl} className="w-fit no-underline">
+              <Button>Transfer Ownership</Button>
             </Link>
-          </p>
-
-          <Link href={success.transferUrl} style={buttonStyle}>
-            Transfer Ownership
-          </Link>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </section>
   );
 }
-
-const formStyle = {
-  display: "grid",
-  gap: 10,
-  maxWidth: 560,
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14
-};
-
-const inputStyle = {
-  border: "1px solid #cfe2db",
-  borderRadius: 8,
-  padding: "10px 12px",
-  fontSize: 14
-};
-
-const buttonStyle = {
-  background: "#1D9E75",
-  color: "white",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content",
-  textDecoration: "none",
-  display: "inline-block"
-};
-
-const cardStyle = {
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14,
-  maxWidth: 760
-};
-
-const textStyle = { margin: "4px 0", color: "#355" };
-
-const linkStyle = {
-  color: "#176f52",
-  fontWeight: 700,
-  textDecoration: "none"
-};
