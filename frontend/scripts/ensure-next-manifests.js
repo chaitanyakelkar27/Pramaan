@@ -68,18 +68,26 @@ function copyIfExists(src, dst) {
   console.log("mirrored", src, "->", dst);
 }
 
-function mirrorCoreNextFilesToParent(localNextDir, parentNextDir) {
-  const filesToMirror = [
-    "routes-manifest.json",
-    "routes-manifest-deterministic.json",
-    "app-path-routes-manifest.json",
-    path.join("server", "pages-manifest.json")
-  ];
+function mirrorFullNextDirToParent(localNextDir, parentNextDir) {
+  if (!fs.existsSync(localNextDir)) {
+    return;
+  }
 
-  for (const relPath of filesToMirror) {
-    const src = path.join(localNextDir, relPath);
-    const dst = path.join(parentNextDir, relPath);
-    copyIfExists(src, dst);
+  fs.mkdirSync(parentNextDir, { recursive: true });
+
+  // Mirror all build artifacts that Vercel may resolve from /vercel/path0/.next.
+  // Skip cache-only folders to keep copy lightweight.
+  const entries = fs.readdirSync(localNextDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === "cache") {
+      continue;
+    }
+
+    const srcPath = path.join(localNextDir, entry.name);
+    const dstPath = path.join(parentNextDir, entry.name);
+
+    fs.cpSync(srcPath, dstPath, { recursive: true, force: true });
+    console.log("mirrored", srcPath, "->", dstPath);
   }
 }
 
@@ -93,7 +101,7 @@ function main() {
   // the app is in a subdirectory. Mirror the core manifests only on Vercel.
   if (process.env.VERCEL === "1") {
     const parentNextDir = path.resolve(cwd, "..", ".next");
-    mirrorCoreNextFilesToParent(localNextDir, parentNextDir);
+    mirrorFullNextDirToParent(localNextDir, parentNextDir);
     ensureManifestsInDir(parentNextDir, path.join(parentNextDir, "routes-manifest.json"));
   }
 }
