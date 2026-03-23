@@ -4,11 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "preflight:sepolia": "node scripts/preflight-sepolia.js",
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "verify:sepolia": "hardhat run scripts/verify.js --network sepolia",
     "sync:frontend:sepolia": "node scripts/sync-frontend-env.js sepolia",
-    "deploy:sepolia:sync": "npm run deploy:sepolia && npm run sync:frontend:sepolia"
+    "deploy:sepolia:sync": "npm run preflight:sepolia && npm run deploy:sepolia && npm run sync:frontend:sepolia",
+    "deploy:sepolia:full": "npm run deploy:sepolia:sync && npm run verify:sepolia"
   },
   "keywords": [],
   "author": "",
