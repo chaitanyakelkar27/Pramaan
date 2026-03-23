@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createPublicClient, http } from "viem";
 import { sepolia } from "viem/chains";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
 import TerritorScore from "../../components/TerritorScore";
 import {
   approveEscrowForToken,
@@ -428,302 +432,308 @@ export default function TransferPage() {
   }));
 
   return (
-    <section style={{ display: "grid", gap: 16 }}>
-      <h1 style={{ margin: 0 }}>Transfer Product Ownership</h1>
-      <p style={{ margin: 0, color: "#466" }}>Transfer ownership with quadratic royalty and terroir impact preview.</p>
+    <section className="grid gap-6">
+      <div className="grid gap-2">
+        <h1 className="m-0 text-3xl font-bold text-[#20473d]">Transfer Product Ownership</h1>
+        <p className="m-0 text-[#49665e]">Transfer ownership with quadratic royalty and terroir impact preview.</p>
+      </div>
 
-      <form onSubmit={onCreateEscrow} style={formStyle}>
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>Escrow Transfer (Recommended)</h3>
-        <p style={{ margin: "0 0 8px", color: "#466" }}>
-          Buyer creates escrow, seller marks shipped, buyer confirms delivery to release funds and transfer NFT.
-        </p>
-
-        <input
-          suppressHydrationWarning
-          required
-          type="number"
-          min="1"
-          value={escrowTokenId}
-          onChange={(e) => setEscrowTokenId(e.target.value)}
-          placeholder="NFT Token ID"
-          style={inputStyle}
-        />
-
-        <input
-          suppressHydrationWarning
-          required
-          value={escrowSeller}
-          onChange={(e) => setEscrowSeller(e.target.value)}
-          placeholder="Seller wallet (0x...)"
-          style={inputStyle}
-        />
-
-        <input
-          suppressHydrationWarning
-          required
-          type="number"
-          min="0.0001"
-          step="0.0001"
-          value={escrowAmountEth}
-          onChange={(e) => setEscrowAmountEth(e.target.value)}
-          placeholder="Escrow amount (ETH)"
-          style={inputStyle}
-        />
-
-        <button suppressHydrationWarning type="submit" disabled={escrowLoading} style={buttonStyle}>
-          {escrowLoading ? "Working..." : "Create Escrow"}
-        </button>
-
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onApproveTokenForEscrow} style={buttonStyle}>
-            Approve Token for Escrow
-          </button>
-          <button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onMarkShipped} style={buttonStyle}>
-            Mark Shipped
-          </button>
-          <button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onConfirmEscrow} style={buttonStyle}>
-            Confirm Received
-          </button>
-          <button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onCancelEscrow} style={buttonStyle}>
-            Cancel Expired
-          </button>
-        </div>
-
-        <input
-          suppressHydrationWarning
-          value={escrowId}
-          onChange={(e) => setEscrowId(e.target.value)}
-          placeholder="Escrow ID"
-          style={inputStyle}
-        />
-
-        <button
-          suppressHydrationWarning
-          type="button"
-          disabled={escrowLoading || !escrowId}
-          onClick={() => loadEscrow(escrowId)}
-          style={buttonStyle}
-        >
-          Load Escrow
-        </button>
-
-        <input
-          suppressHydrationWarning
-          value={escrowDisputeReason}
-          onChange={(e) => setEscrowDisputeReason(e.target.value)}
-          placeholder="Dispute reason"
-          style={inputStyle}
-        />
-        <button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onRaiseDispute} style={buttonStyle}>
-          Raise Dispute
-        </button>
-
-        {escrowStatusText && <p style={{ margin: 0, color: "#355" }}>{escrowStatusText}</p>}
-
-        {escrowData && (
-          <div style={cardStyle}>
-            <p style={textStyle}>Escrow ID: {escrowData.id}</p>
-            <p style={textStyle}>Token ID: {escrowData.tokenId}</p>
-            <p style={textStyle}>Buyer: {truncateAddress(escrowData.buyer)}</p>
-            <p style={textStyle}>Seller: {truncateAddress(escrowData.seller)}</p>
-            <p style={textStyle}>Amount: {escrowData.salePriceEth} ETH</p>
-            <p style={textStyle}>Status: {getEscrowStatusLabel(escrowData.status)}</p>
-            {escrowData.disputeReason && <p style={textStyle}>Dispute: {escrowData.disputeReason}</p>}
-          </div>
-        )}
-      </form>
-
-      <form onSubmit={(e) => { e.preventDefault(); loadProduct(hash); }} style={formStyle}>
-        <input
-          suppressHydrationWarning
-          required
-          value={hash}
-          onChange={(e) => setHash(e.target.value)}
-          placeholder="Product hash (0x...)"
-          style={inputStyle}
-        />
-        <button suppressHydrationWarning type="submit" disabled={loading} style={buttonStyle}>Load Product</button>
-      </form>
-
-      {status && <p style={{ margin: 0, color: "#355" }}>{status}</p>}
-
-      {recordState?.record && (
-        <>
-          <div style={cardStyle}>
-            <h3 style={{ marginTop: 0, marginBottom: 8 }}>Current Product State</h3>
-            <p style={textStyle}>Product: {recordState.record.productName}</p>
-            <p style={textStyle}>Current Owner: {truncateAddress(currentOwner)}</p>
-            <p style={textStyle}>Transfer Count: {String(currentTransferCount)}</p>
-            <div style={{ maxWidth: 320 }}>
-              <TerritorScore score={currentTerroir} />
-            </div>
-          </div>
-
-          <form onSubmit={onConfirmTransfer} style={formStyle}>
-            <input
+      <Card className="max-w-4xl">
+        <CardHeader className="pb-2">
+          <CardTitle>Escrow Transfer (Recommended)</CardTitle>
+          <CardDescription>
+            Buyer creates escrow, seller marks shipped, buyer confirms delivery to release funds and transfer NFT.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onCreateEscrow} className="grid gap-3">
+            <Input
               suppressHydrationWarning
               required
-              value={newOwnerInput}
-              onChange={(e) => {
-                const value = e.target.value;
-                setNewOwnerInput(value);
-                resolveOwnerInput(value);
-              }}
-              placeholder="New owner wallet address or ENS"
-              style={inputStyle}
+              type="number"
+              min="1"
+              value={escrowTokenId}
+              onChange={(e) => setEscrowTokenId(e.target.value)}
+              placeholder="NFT Token ID"
             />
 
-            {ensInfo && <p style={{ margin: 0, color: "#577" }}>{ensInfo}</p>}
+            <Input
+              suppressHydrationWarning
+              required
+              value={escrowSeller}
+              onChange={(e) => setEscrowSeller(e.target.value)}
+              placeholder="Seller wallet (0x...)"
+            />
 
-            <input
+            <Input
               suppressHydrationWarning
               required
               type="number"
               min="0.0001"
               step="0.0001"
-              value={paymentEth}
-              onChange={(e) => setPaymentEth(e.target.value)}
-              placeholder="Buyer payment (ETH)"
-              style={inputStyle}
+              value={escrowAmountEth}
+              onChange={(e) => setEscrowAmountEth(e.target.value)}
+              placeholder="Escrow amount (ETH)"
             />
 
-            <div style={cardStyle}>
-              <h3 style={{ marginTop: 0, marginBottom: 8 }}>Quadratic Royalty Calculator</h3>
-              <p style={textStyle}>Current transfer number: {nextTransferNumber}</p>
-              <p style={textStyle}>Formula: royalty = 40% / sqrt(N)</p>
-              <p style={textStyle}>At transfer 1: 40% goes to artisan</p>
-              <p style={textStyle}>At transfer 2: 28% goes to artisan</p>
-              <p style={textStyle}>At transfer 4: 20% goes to artisan</p>
-              <p style={textStyle}>At transfer 9: 13% goes to artisan</p>
+            <Button suppressHydrationWarning type="submit" disabled={escrowLoading} className="w-fit">
+              {escrowLoading ? "Working..." : "Create Escrow"}
+            </Button>
 
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 10, minHeight: 120 }}>
-                {decaySamples.map((item) => (
-                  <div key={item.n} style={{ display: "grid", justifyItems: "center", gap: 6 }}>
-                    <div
-                      style={{
-                        width: 48,
-                        height: item.percent * 2,
-                        background: "#7ec9b1",
-                        border: "1px solid #5eb39a",
-                        borderRadius: 6
-                      }}
-                    />
-                    <div style={{ fontSize: 12, color: "#466" }}>N={item.n}</div>
-                    <div style={{ fontSize: 12, color: "#274f45", fontWeight: 700 }}>{item.percent}%</div>
-                  </div>
-                ))}
-              </div>
-
-              <p style={{ marginTop: 12, marginBottom: 0, color: "#274f45", fontWeight: 700 }}>
-                For this transfer: artisan receives {artisanPayment.toFixed(6)} ETH of your {buyerPayment.toFixed(6)} ETH payment
-              </p>
+            <div className="flex flex-wrap gap-2">
+              <Button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onApproveTokenForEscrow} variant="secondary">
+                Approve Token for Escrow
+              </Button>
+              <Button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onMarkShipped} variant="secondary">
+                Mark Shipped
+              </Button>
+              <Button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onConfirmEscrow} variant="secondary">
+                Confirm Received
+              </Button>
+              <Button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onCancelEscrow} variant="secondary">
+                Cancel Expired
+              </Button>
             </div>
 
-            {projectedTerroir !== null && (
-              <div
-                style={{
-                  background: newOwnerVerified ? "#e2f7ed" : "#fff0e0",
-                  border: "1px solid " + (newOwnerVerified ? "#9fd8c0" : "#e7c09f"),
-                  borderRadius: 10,
-                  padding: "10px 12px"
-                }}
-              >
-                <div style={{ fontWeight: 700, color: newOwnerVerified ? "#186d4c" : "#8a5b09" }}>
-                  {newOwnerVerified
-                    ? "Score will remain " + currentTerroir + " — verified handler"
-                    : "Score will drop from " + currentTerroir + " to " + projectedTerroir + " — unverified handler detected"}
-                </div>
-              </div>
-            )}
+            <Input
+              suppressHydrationWarning
+              value={escrowId}
+              onChange={(e) => setEscrowId(e.target.value)}
+              placeholder="Escrow ID"
+            />
 
-            <button suppressHydrationWarning disabled={loading} type="submit" style={buttonStyle}>
-              {loading ? "Processing..." : "Confirm Transfer"}
-            </button>
+            <Button
+              suppressHydrationWarning
+              type="button"
+              disabled={escrowLoading || !escrowId}
+              onClick={() => loadEscrow(escrowId)}
+              variant="secondary"
+              className="w-fit"
+            >
+              Load Escrow
+            </Button>
 
-            {stepProgress && (
-              <div
-                style={{
-                  border: "1px dashed #b4d8cb",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  color: "#2f5a50",
-                  background: "#eff8f4"
-                }}
-              >
-                {stepProgress}
-              </div>
+            <Input
+              suppressHydrationWarning
+              value={escrowDisputeReason}
+              onChange={(e) => setEscrowDisputeReason(e.target.value)}
+              placeholder="Dispute reason"
+            />
+            <Button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onRaiseDispute} variant="secondary" className="w-fit">
+              Raise Dispute
+            </Button>
+
+            {escrowStatusText && <p className="m-0 text-[#355]">{escrowStatusText}</p>}
+
+            {escrowData && (
+              <Card className="border-[#dbe9e3] bg-[#f9fcfb]">
+                <CardContent className="grid gap-2 pt-6 text-[#355]">
+                  <p className="m-0">Escrow ID: {escrowData.id}</p>
+                  <p className="m-0">Token ID: {escrowData.tokenId}</p>
+                  <p className="m-0">Buyer: {truncateAddress(escrowData.buyer)}</p>
+                  <p className="m-0">Seller: {truncateAddress(escrowData.seller)}</p>
+                  <p className="m-0">Amount: {escrowData.salePriceEth} ETH</p>
+                  <p className="m-0">
+                    Status:{" "}
+                    <Badge variant={Number(escrowData.status) >= 5 ? "warm" : "default"}>{getEscrowStatusLabel(escrowData.status)}</Badge>
+                  </p>
+                  {escrowData.disputeReason && <p className="m-0">Dispute: {escrowData.disputeReason}</p>}
+                </CardContent>
+              </Card>
             )}
           </form>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-4xl">
+        <CardHeader className="pb-2">
+          <CardTitle>Load Product for Transfer</CardTitle>
+          <CardDescription>Fetch current ownership and terroir state using the product hash.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={(e) => { e.preventDefault(); loadProduct(hash); }} className="grid gap-3">
+            <Input
+              suppressHydrationWarning
+              required
+              value={hash}
+              onChange={(e) => setHash(e.target.value)}
+              placeholder="Product hash (0x...)"
+            />
+            <Button suppressHydrationWarning type="submit" disabled={loading} className="w-fit">Load Product</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {status && <p className="m-0 text-[#355]">{status}</p>}
+
+      {recordState?.record && (
+        <>
+          <Card className="max-w-4xl">
+            <CardHeader className="pb-2">
+              <CardTitle>Current Product State</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3 md:col-span-2">
+                <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Product</p>
+                <p className="m-0 text-lg font-semibold text-[#20473d]">{recordState.record.productName}</p>
+              </div>
+
+              <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+                <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Current Owner</p>
+                <p className="m-0 font-mono text-base font-medium text-[#20473d]">{truncateAddress(currentOwner)}</p>
+              </div>
+
+              <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+                <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Transfer Count</p>
+                <p className="m-0 text-lg font-semibold text-[#20473d]">{String(currentTransferCount)}</p>
+              </div>
+
+              <div className="md:col-span-2 md:max-w-xl">
+                <TerritorScore score={currentTerroir} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="max-w-4xl">
+            <CardHeader className="pb-2">
+              <CardTitle>Direct Transfer and Royalty Preview</CardTitle>
+              <CardDescription>Use ENS or wallet address, then confirm transfer with projected impact.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={onConfirmTransfer} className="grid gap-3">
+                <Input
+                  suppressHydrationWarning
+                  required
+                  value={newOwnerInput}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNewOwnerInput(value);
+                    resolveOwnerInput(value);
+                  }}
+                  placeholder="New owner wallet address or ENS"
+                />
+
+                {ensInfo && <p className="m-0 text-[#577]">{ensInfo}</p>}
+
+                <Input
+                  suppressHydrationWarning
+                  required
+                  type="number"
+                  min="0.0001"
+                  step="0.0001"
+                  value={paymentEth}
+                  onChange={(e) => setPaymentEth(e.target.value)}
+                  placeholder="Buyer payment (ETH)"
+                />
+
+                <Card className="border-[#dbe9e3] bg-[#f9fcfb]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Quadratic Royalty Calculator</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 text-[#355]">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-xl border border-[#d5e7df] bg-white p-3">
+                        <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Transfer Number</p>
+                        <p className="m-0 text-2xl font-bold text-[#20473d]">{nextTransferNumber}</p>
+                      </div>
+                      <div className="rounded-xl border border-[#d5e7df] bg-white p-3">
+                        <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Current Royalty</p>
+                        <p className="m-0 text-2xl font-bold text-[#1f6d50]">{royaltyPercent.toFixed(2)}%</p>
+                      </div>
+                    </div>
+
+                    <p className="m-0 text-sm text-[#466]">Formula: royalty = 40% / sqrt(N)</p>
+
+                    <div className="rounded-xl border border-[#d5e7df] bg-white p-3">
+                      <p className="mb-2 mt-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Decay Curve Samples</p>
+                      <div className="flex min-h-32 items-end gap-3">
+                        {decaySamples.map((item) => (
+                          <div key={item.n} className="grid flex-1 justify-items-center gap-1.5">
+                            <div
+                              style={{
+                                width: "100%",
+                                maxWidth: 56,
+                                height: Math.max(20, item.percent * 2),
+                                background: "#7ec9b1",
+                                border: "1px solid #5eb39a",
+                                borderRadius: 8
+                              }}
+                            />
+                            <div className="text-xs text-[#466]">N={item.n}</div>
+                            <div className="text-xs font-semibold text-[#274f45]">{item.percent}%</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-[#9fd8c0] bg-[#e8f8f1] p-3">
+                      <p className="m-0 text-base font-semibold text-[#1f6d50]">
+                        Artisan payout: {artisanPayment.toFixed(6)} ETH
+                      </p>
+                      <p className="m-0 text-sm text-[#355]">from buyer payment of {buyerPayment.toFixed(6)} ETH</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {projectedTerroir !== null && (
+                  <div
+                    className="rounded-xl border px-3 py-2"
+                    style={{
+                      background: newOwnerVerified ? "#e2f7ed" : "#fff0e0",
+                      borderColor: newOwnerVerified ? "#9fd8c0" : "#e7c09f"
+                    }}
+                  >
+                    <div className="font-semibold" style={{ color: newOwnerVerified ? "#186d4c" : "#8a5b09" }}>
+                      {newOwnerVerified
+                        ? "Score will remain " + currentTerroir + " — verified handler"
+                        : "Score will drop from " + currentTerroir + " to " + projectedTerroir + " — unverified handler detected"}
+                    </div>
+                  </div>
+                )}
+
+                <Button suppressHydrationWarning disabled={loading} type="submit" className="w-fit">
+                  {loading ? "Processing..." : "Confirm Transfer"}
+                </Button>
+
+                {stepProgress && (
+                  <div className="rounded-lg border border-dashed border-[#b4d8cb] bg-[#eff8f4] px-3 py-2 text-[#2f5a50]">
+                    {stepProgress}
+                  </div>
+                )}
+              </form>
+            </CardContent>
+          </Card>
 
           {transferSuccess && (
-            <div style={cardStyle}>
-              <h3 style={{ marginTop: 0, marginBottom: 8, color: "#1f6d50" }}>Transfer Completed</h3>
-              <p style={textStyle}>New Terroir Score: {transferSuccess.newTerroir}</p>
-              <p style={textStyle}>Artisan payment: {transferSuccess.artisanPaymentEth} ETH</p>
-              {transferSuccess.txUrl && (
-                <p style={textStyle}>
-                  Etherscan: <a href={transferSuccess.txUrl} target="_blank" rel="noreferrer" style={linkStyle}>View tx</a>
-                </p>
-              )}
-            </div>
+            <Card className="max-w-4xl border-[#cde6dc] bg-[#f4fbf8]">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-[#1f6d50]">Transfer Completed</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2 text-[#355]">
+                <p className="m-0">New Terroir Score: {transferSuccess.newTerroir}</p>
+                <p className="m-0">Artisan payment: {transferSuccess.artisanPaymentEth} ETH</p>
+                {transferSuccess.txUrl && (
+                  <p className="m-0">
+                    Etherscan:{" "}
+                    <a href={transferSuccess.txUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#176f52] no-underline">View tx</a>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
           )}
 
-          <div style={cardStyle}>
-            <p style={{ margin: 0, color: "#466" }}>
-              Consumer verification link:{" "}
-              <Link href={"/verify?hash=" + hash} style={linkStyle}>
-                /verify?hash={hash}
-              </Link>
-            </p>
-          </div>
+          <Card className="max-w-4xl">
+            <CardContent className="pt-6 text-[#466]">
+              <p className="m-0">
+                Consumer verification link:{" "}
+                <Link href={"/verify?hash=" + hash} className="font-semibold text-[#176f52] no-underline">
+                  /verify?hash={hash}
+                </Link>
+              </p>
+            </CardContent>
+          </Card>
         </>
       )}
     </section>
   );
 }
-
-const formStyle = {
-  display: "grid",
-  gap: 10,
-  maxWidth: 760,
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14
-};
-
-const inputStyle = {
-  border: "1px solid #cfe2db",
-  borderRadius: 8,
-  padding: "10px 12px",
-  fontSize: 14
-};
-
-const buttonStyle = {
-  background: "#1D9E75",
-  color: "white",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content",
-  textDecoration: "none",
-  display: "inline-block"
-};
-
-const cardStyle = {
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14,
-  maxWidth: 760
-};
-
-const textStyle = { margin: "4px 0", color: "#355" };
-
-const linkStyle = {
-  color: "#176f52",
-  fontWeight: 700,
-  textDecoration: "none"
-};
