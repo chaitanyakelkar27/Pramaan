@@ -3,6 +3,24 @@ const path = require("path");
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: path.resolve(__dirname),
+  
+  // Turbopack config (Next.js 16+ default bundler)
+  // Alias optional dependencies that @wagmi/connectors lazily imports
+  turbopack: {
+    resolveAlias: {
+      "porto": false,
+      "porto/internal": false,
+      "@base-org/account": false,
+      "@coinbase/wallet-sdk": false,
+      "@metamask/sdk": false,
+      "@safe-global/safe-apps-sdk": false,
+      "@safe-global/safe-apps-provider": false,
+      "@walletconnect/ethereum-provider": false,
+      "@react-native-async-storage/async-storage": false
+    }
+  },
+  
+  // Keep webpack config for compatibility
   webpack: (config) => {
     config.resolve = config.resolve || {};
     config.resolve.alias = config.resolve.alias || {};
