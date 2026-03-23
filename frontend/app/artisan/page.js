@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { LogInWithAnonAadhaar, useAnonAadhaar } from "@anon-aadhaar/react";
 import { craftTypes, detectCraft, giRegions } from "../../src/utils/craftDetector";
 import { uploadToIPFS } from "../../src/utils/ipfs";
-import { connectWallet, markAadhaarVerified, registerArtisan } from "../../src/utils/contract";
+import { connectWallet, getArtisan, isVerifiedArtisan, markAadhaarVerified, registerArtisan } from "../../src/utils/contract";
 
 const TRANSFER_EVENT_SIGNATURE =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -53,6 +53,48 @@ export default function ArtisanPage() {
   useEffect(() => {
     setHydrated(true);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function redirectIfAlreadyRegistered() {
+      if (!hydrated) {
+        return;
+      }
+
+      try {
+        const connected = await connectWallet();
+        if (!active) {
+          return;
+        }
+
+        setWallet(connected.address);
+
+        const [artisanRecord, verified] = await Promise.all([
+          getArtisan(connected.address),
+          isVerifiedArtisan(connected.address)
+        ]);
+
+        if (!active) {
+          return;
+        }
+
+        const isRegistered = Number(artisanRecord?.registeredAt || 0) > 0;
+        if (isRegistered && Boolean(verified)) {
+          setMessage("Wallet already registered and verified. Redirecting to product registration...");
+          router.replace("/register-product");
+        }
+      } catch (_error) {
+        // Keep manual flow available when wallet is not connected yet.
+      }
+    }
+
+    void redirectIfAlreadyRegistered();
+
+    return () => {
+      active = false;
+    };
+  }, [hydrated, router]);
 
   function getAnonStatusMeta(status) {
     if (status === "logged-in") {

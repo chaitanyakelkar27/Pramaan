@@ -35,6 +35,33 @@ const DEFAULT_TARGET_ROYALTY_ETH = "0.001";
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const ZERO_HASH = "0x" + "00".repeat(32);
 
+const LEGACY_ARTISAN_READ_ABI = [
+    {
+        inputs: [{ internalType: "address", name: "wallet", type: "address" }],
+        name: "getArtisan",
+        outputs: [
+            {
+                components: [
+                    { internalType: "address", name: "wallet", type: "address" },
+                    { internalType: "string", name: "name", type: "string" },
+                    { internalType: "string", name: "craft", type: "string" },
+                    { internalType: "string", name: "giRegion", type: "string" },
+                    { internalType: "uint8", name: "craftScore", type: "uint8" },
+                    { internalType: "uint256", name: "registeredAt", type: "uint256" },
+                    { internalType: "bool", name: "aadhaarVerified", type: "bool" },
+                    { internalType: "bool", name: "validatorApproved", type: "bool" },
+                    { internalType: "bool", name: "verified", type: "bool" }
+                ],
+                internalType: "struct ArtisanRegistry.ArtisanRecord",
+                name: "",
+                type: "tuple"
+            }
+        ],
+        stateMutability: "view",
+        type: "function"
+    }
+];
+
 const LEGACY_PRODUCT_REGISTER_ABI = [
     {
         inputs: [
@@ -228,6 +255,46 @@ function extractRevertReason(error) {
     return candidates[0] ? String(candidates[0]) : "Unknown error";
 }
 
+function isAbiDecodeMismatchError(error) {
+    const message = String(error?.shortMessage || error?.message || "").toLowerCase();
+    return (
+        message.includes("not a valid boolean") ||
+        message.includes("cannot decode") ||
+        message.includes("bytes value") ||
+        message.includes("returned no data")
+    );
+}
+
+function normalizeLegacyArtisanRecord(record) {
+    return {
+        wallet: record?.wallet,
+        name: record?.name || "",
+        craft: record?.craft || "",
+        giRegion: record?.giRegion || "",
+        registeredAt: BigInt(record?.registeredAt || 0),
+        isAadhaarVerified: Boolean(record?.aadhaarVerified),
+        isFraudulent: false,
+        reputationScore: 0n,
+        lockedReputation: 0n,
+        royaltyPenaltyBps: 0n
+    };
+}
+
+function emptyArtisanRecord(address) {
+    return {
+        wallet: address,
+        name: "",
+        craft: "",
+        giRegion: "",
+        registeredAt: 0n,
+        isAadhaarVerified: false,
+        isFraudulent: false,
+        reputationScore: 0n,
+        lockedReputation: 0n,
+        royaltyPenaltyBps: 0n
+    };
+}
+
 async function getProductRegistryArtisanRegistryAddress() {
     return readContract(config, {
         address: PRODUCT_REGISTRY_ADDRESS,
@@ -331,12 +398,35 @@ export async function registerArtisan(name, craft, giRegion, craftScore) {
 export async function getArtisan(address) {
     assertConfiguredAddress(ARTISAN_REGISTRY_ADDRESS, "ARTISAN_REGISTRY_ADDRESS");
 
-    return readContract(config, {
-        address: ARTISAN_REGISTRY_ADDRESS,
-        abi: ARTISAN_ABI,
-        functionName: "getArtisan",
-        args: [address]
-    });
+    try {
+        return await readContract(config, {
+            address: ARTISAN_REGISTRY_ADDRESS,
+            abi: ARTISAN_ABI,
+            functionName: "getArtisan",
+            args: [address]
+        });
+    } catch (error) {
+        if (!isAbiDecodeMismatchError(error)) {
+            throw error;
+        }
+
+        try {
+            const legacyRecord = await readContract(config, {
+                address: ARTISAN_REGISTRY_ADDRESS,
+                abi: LEGACY_ARTISAN_READ_ABI,
+                functionName: "getArtisan",
+                args: [address]
+            });
+
+            return normalizeLegacyArtisanRecord(legacyRecord);
+        } catch (legacyError) {
+            if (!isAbiDecodeMismatchError(legacyError)) {
+                throw legacyError;
+            }
+
+            return emptyArtisanRecord(address);
+        }
+    }
 }
 
 export async function isVerifiedArtisan(address) {
