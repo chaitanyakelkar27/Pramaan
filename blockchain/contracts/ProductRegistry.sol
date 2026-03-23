@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
 interface IArtisanRegistry {
     function isVerifiedArtisan(address wallet) external view returns (bool);
 }
 
 contract ProductRegistry {
+    using ECDSA for bytes32;
+
     struct ProductRecord {
         bytes32 productHash;
         string ipfsCid;
@@ -27,6 +31,7 @@ contract ProductRegistry {
 
     mapping(bytes32 => ProductRecord) public products;
     mapping(bytes32 => mapping(bytes32 => bool)) public usedScanNonces;
+    mapping(bytes32 => bool) public usedAttestationDigests;
 
     event ProductRegistered(bytes32 indexed productHash, address indexed artisan, string giTag);
     event ProductProvenanceSigned(
@@ -71,6 +76,25 @@ contract ProductRegistry {
         require(products[hash].registeredAt == 0, "Product already registered");
         require(metadataHash != bytes32(0), "Invalid metadata hash");
         require(provenanceSigner != address(0), "Invalid signer");
+        require(deviceSignature.length > 0, "Missing device signature");
+
+        bytes32 attestationDigest = _attestationDigest(
+            hash,
+            metadataHash,
+            msg.sender,
+            provenanceSigner,
+            cid,
+            name,
+            giTag,
+            lat,
+            lng
+        );
+        require(!usedAttestationDigests[attestationDigest], "Attestation already used");
+
+        address recoveredSigner = attestationDigest.toEthSignedMessageHash().recover(deviceSignature);
+        require(recoveredSigner == provenanceSigner, "Invalid provenance attestation");
+
+        usedAttestationDigests[attestationDigest] = true;
 
         ProductRecord storage product = products[hash];
         product.productHash = hash;
@@ -167,6 +191,34 @@ contract ProductRegistry {
             return product.artisan;
         }
         return product.handlers[product.handlers.length - 1];
+    }
+
+    function _attestationDigest(
+        bytes32 hash,
+        bytes32 metadataHash,
+        address artisan,
+        address provenanceSigner,
+        string calldata cid,
+        string calldata name,
+        string calldata giTag,
+        uint256 lat,
+        uint256 lng
+    ) internal view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                block.chainid,
+                address(this),
+                hash,
+                metadataHash,
+                artisan,
+                provenanceSigner,
+                cid,
+                name,
+                giTag,
+                lat,
+                lng
+            )
+        );
     }
 
     function _quadraticRoyaltyBps(uint256 transferCount) internal pure returns (uint256) {
