@@ -1,6 +1,19 @@
 const fs = require("fs");
 const path = require("path");
 
+const FALLBACK_ROUTES_MANIFEST = {
+  version: 3,
+  pages404: true,
+  caseSensitive: false,
+  basePath: "",
+  redirects: [],
+  headers: [],
+  dynamicRoutes: [],
+  staticRoutes: [],
+  dataRoutes: [],
+  i18n: null
+};
+
 function ensureFile(src, dst) {
   if (!fs.existsSync(src)) {
     return false;
@@ -17,18 +30,39 @@ function ensureFile(src, dst) {
   return true;
 }
 
+function ensureJsonFile(filePath, value) {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, JSON.stringify(value), "utf8");
+    console.log("created fallback", filePath);
+  }
+}
+
+function ensureManifestsInDir(dirPath, preferredSource) {
+  const routesPath = path.join(dirPath, "routes-manifest.json");
+  const deterministicPath = path.join(dirPath, "routes-manifest-deterministic.json");
+
+  if (!fs.existsSync(routesPath)) {
+    if (preferredSource && fs.existsSync(preferredSource)) {
+      ensureFile(preferredSource, routesPath);
+    } else {
+      ensureJsonFile(routesPath, FALLBACK_ROUTES_MANIFEST);
+    }
+  }
+
+  if (!fs.existsSync(deterministicPath)) {
+    if (!ensureFile(routesPath, deterministicPath)) {
+      ensureJsonFile(deterministicPath, FALLBACK_ROUTES_MANIFEST);
+    }
+  }
+}
+
 function main() {
   const cwd = process.cwd();
   const localNextDir = path.join(cwd, ".next");
   const localRoutes = path.join(localNextDir, "routes-manifest.json");
-  const localDeterministic = path.join(localNextDir, "routes-manifest-deterministic.json");
-
-  const hasLocalRoutes = ensureFile(localRoutes, localDeterministic);
-
-  if (!hasLocalRoutes) {
-    console.log("source missing", localRoutes);
-    return;
-  }
+  ensureManifestsInDir(localNextDir, localRoutes);
 
   // Vercel monorepo builds may package from the parent project root and look
   // for manifests under /vercel/path0/.next even when build runs in frontend/.
@@ -38,11 +72,7 @@ function main() {
   }
 
   const parentNextDir = path.resolve(cwd, "..", ".next");
-  const parentRoutes = path.join(parentNextDir, "routes-manifest.json");
-  const parentDeterministic = path.join(parentNextDir, "routes-manifest-deterministic.json");
-
-  ensureFile(localRoutes, parentRoutes);
-  ensureFile(localDeterministic, parentDeterministic);
+  ensureManifestsInDir(parentNextDir, localRoutes);
 }
 
 main();
