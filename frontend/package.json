@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build --webpack",
+    "build": "next build --turbopack",
+    "postbuild": "node -e \"const fs=require('fs');const src='.next/routes-manifest.json';const dst='.next/routes-manifest-deterministic.json';if(fs.existsSync(src)&&!fs.existsSync(dst)){fs.copyFileSync(src,dst);console.log('created',dst)}else{console.log('manifest already present or source missing')}\"",
     "start": "next start",
     "lint": "next lint",
     "test": "echo \"Error: no test specified\" && exit 1"
