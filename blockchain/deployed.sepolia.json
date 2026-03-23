@@ -1,18 +1,21 @@
 {
   "network": "sepolia",
   "chainId": 11155111,
-  "ArtisanRegistry": "0xebbc94929cAa7ccFcDB92D879dF3305184ec3589",
-  "ProductRegistry": "0xe6f5eBb08532AD11A2b4Fb4dCa9aD4BDBffcF738",
+  "ArtisanRegistry": "0x1eeC6F371B6F33225C573a1BD04C91dC9285f3A6",
+  "DynamicRoyalty": "0xb1DEE44BC4631F147d107Ea8D3CC779943f12eDb",
+  "ProductNFT": "0xbc80dEd18Ef82A74300eEb79e4AC58B15309e5aA",
+  "EscrowMarketplace": "0x01d946371FEd0a67cb49fE30191b25AE54BA33B0",
+  "ProductRegistry": "0xda5B19B569e8626665c7EcCb6339622591680184",
   "deployTx": {
-    "ArtisanRegistry": "0xfae3b91f7edab682dcd84afac36d024d6fd64662c08adbea11e0179e0088c024",
-    "ProductRegistry": "0x00def089e7097ddd174b87ca388c42d434c0c34e00bcc79233d7277540dab38d"
+    "ArtisanRegistry": "0x06a50fc9a312d8bd708fce4a383017be2bbcbc7eab70a6a32b6f88e30656809c",
+    "ProductRegistry": "0x94ea89575a7235c82294f47ffe75afd8fe095ee357a14724238b5fb5cc3125b1"
   },
   "explorer": {
     "baseUrl": "https://sepolia.etherscan.io",
-    "ArtisanRegistry": "https://sepolia.etherscan.io/address/0xebbc94929cAa7ccFcDB92D879dF3305184ec3589",
-    "ProductRegistry": "https://sepolia.etherscan.io/address/0xe6f5eBb08532AD11A2b4Fb4dCa9aD4BDBffcF738",
-    "ArtisanRegistryTx": "https://sepolia.etherscan.io/tx/0xfae3b91f7edab682dcd84afac36d024d6fd64662c08adbea11e0179e0088c024",
-    "ProductRegistryTx": "https://sepolia.etherscan.io/tx/0x00def089e7097ddd174b87ca388c42d434c0c34e00bcc79233d7277540dab38d"
+    "ArtisanRegistry": "https://sepolia.etherscan.io/address/0x1eeC6F371B6F33225C573a1BD04C91dC9285f3A6",
+    "ProductRegistry": "https://sepolia.etherscan.io/address/0xda5B19B569e8626665c7EcCb6339622591680184",
+    "ArtisanRegistryTx": "https://sepolia.etherscan.io/tx/0x06a50fc9a312d8bd708fce4a383017be2bbcbc7eab70a6a32b6f88e30656809c",
+    "ProductRegistryTx": "https://sepolia.etherscan.io/tx/0x94ea89575a7235c82294f47ffe75afd8fe095ee357a14724238b5fb5cc3125b1"
   },
-  "deployedAt": "2026-03-23T11:53:40.927Z"
+  "deployedAt": "2026-03-23T21:39:38.221Z"
 }
