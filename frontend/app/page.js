@@ -3,404 +3,289 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import TerritorScore from "../components/TerritorScore";
 
-/* ── Demo data ───────────────────────────────────────────────── */
-const features = [
+const featureCards = [
   {
-    color: "#0d9488",
-    bg: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)",
-    icon: "🛡️",
     title: "Proof of Craft",
     desc: "Only verified artisans can register products. AI-verified at the source.",
+    className: "teal"
   },
   {
-    color: "#7c3aed",
-    bg: "linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)",
-    icon: "🔗",
     title: "Soulbound Identity",
     desc: "Artisan identity is permanently tied to every product. Cannot be transferred or faked.",
+    className: "purple"
   },
   {
-    color: "#d97706",
-    bg: "linear-gradient(135deg, #d97706 0%, #f59e0b 100%)",
-    icon: "📊",
     title: "Terroir Score",
-    desc: "A live 0–100 trust score that degrades the moment a fake handler touches the supply chain.",
-  },
+    desc: "A live 0-100 trust score that degrades the moment a fake handler touches the supply chain.",
+    className: "amber"
+  }
 ];
 
 const demoProducts = [
   { name: "First Flush Darjeeling 2024", terroir: 97, artisan: "Ravi Kumar" },
   { name: "Banarasi Silk Saree — Crimson", terroir: 84, artisan: "Meera Devi" },
-  { name: "Alphonso Mango Batch 12", terroir: 61, artisan: "Suresh Patil" },
+  { name: "Alphonso Mango Batch 12", terroir: 61, artisan: "Suresh Patil" }
 ];
 
-const stats = [
-  { value: "2,847", label: "Products Registered" },
-  { value: "891", label: "Verified Artisans" },
-  { value: "14", label: "GI Tags Covered" },
-];
-
-/* ── Terroir Score ring ──────────────────────────────────────── */
-function TerroirScore({ score }) {
-  const size = 72;
-  const stroke = 6;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
-
-  const color =
-    score >= 80 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
-
-  return (
-    <div style={{ position: "relative", width: size, height: size }}>
-      <svg width={size} height={size}>
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="#e5e7eb"
-          strokeWidth={stroke}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          style={{
-            transform: "rotate(-90deg)",
-            transformOrigin: "center",
-            transition: "stroke-dashoffset 1s ease",
-          }}
-        />
-      </svg>
-      <span
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: 800,
-          fontSize: 18,
-          color,
-        }}
-      >
-        {score}
-      </span>
-    </div>
-  );
-}
-
-/* ── Page component ──────────────────────────────────────────── */
 export default function HomePage() {
   const [hash, setHash] = useState("");
   const router = useRouter();
 
-  const handleVerify = (e) => {
-    e.preventDefault();
-    if (hash.trim()) router.push(`/verify?hash=${encodeURIComponent(hash.trim())}`);
-    else router.push("/verify");
-  };
+  function onVerify(event) {
+    event.preventDefault();
+    const cleanHash = hash.trim();
+    router.push("/verify?hash=" + encodeURIComponent(cleanHash));
+  }
 
   return (
-    <>
+    <section className="home-wrap">
       <style>{`
-        /* ── keyframes ─────────────────────────────────── */
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(24px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,.35); }
-          50%      { box-shadow: 0 0 0 10px rgba(16,185,129,0); }
+        .home-wrap {
+          display: grid;
+          gap: 40px;
+          padding: 8px 0 30px;
         }
 
-        /* ── hero ──────────────────────────────────────── */
         .hero {
+          border: 1px solid #dcebe6;
+          border-radius: 22px;
+          background:
+            radial-gradient(120% 120% at 0% 0%, #d9f7f0 0%, rgba(217, 247, 240, 0) 48%),
+            radial-gradient(120% 120% at 100% 100%, #fff4de 0%, rgba(255, 244, 222, 0) 50%),
+            #ffffff;
+          padding: 42px 20px;
           text-align: center;
-          padding: 64px 0 48px;
-          animation: fadeUp .7s ease both;
         }
+
         .hero h1 {
-          margin: 0 0 14px;
-          font-size: 42px;
-          font-weight: 900;
-          color: #0f2e26;
-          line-height: 1.15;
-          letter-spacing: -0.5px;
+          margin: 0;
+          color: #11352f;
+          font-size: clamp(28px, 5vw, 48px);
+          line-height: 1.1;
+          letter-spacing: -0.02em;
         }
-        .hero h1 span { color: #10b981; }
+
         .hero p {
-          margin: 0 auto 32px;
-          max-width: 600px;
-          font-size: 17px;
-          color: #4b6b63;
+          margin: 14px auto 0;
+          max-width: 760px;
+          color: #3f5e57;
+          font-size: clamp(15px, 2vw, 18px);
           line-height: 1.6;
         }
 
-        /* ── search bar ────────────────────────────────── */
-        .search-bar {
-          display: flex;
-          max-width: 580px;
-          margin: 0 auto;
+        .verify-form {
+          margin: 26px auto 0;
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 10px;
+          max-width: 780px;
+          background: #ffffff;
+          border: 1px solid #cfe3dc;
           border-radius: 14px;
-          overflow: hidden;
-          box-shadow: 0 4px 24px rgba(0,0,0,.08);
+          padding: 10px;
+          box-shadow: 0 10px 28px rgba(18, 63, 54, 0.08);
         }
-        .search-bar input {
-          flex: 1;
-          border: 2px solid #d1e8e0;
-          border-right: none;
-          border-radius: 14px 0 0 14px;
-          padding: 16px 20px;
+
+        .verify-form input {
+          border: 1px solid #c9dfd8;
+          border-radius: 10px;
+          padding: 14px 14px;
           font-size: 15px;
+          color: #11352f;
           outline: none;
-          background: #fff;
-          color: #163f36;
-          transition: border-color .2s;
         }
-        .search-bar input:focus { border-color: #10b981; }
-        .search-bar input::placeholder { color: #8fafa5; }
-        .search-bar button {
+
+        .verify-form input:focus {
+          border-color: #1ea07a;
+          box-shadow: 0 0 0 3px rgba(30, 160, 122, 0.12);
+        }
+
+        .verify-form button {
           border: none;
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-          color: #fff;
-          font-weight: 700;
+          border-radius: 10px;
+          padding: 0 20px;
           font-size: 15px;
-          padding: 16px 28px;
+          font-weight: 700;
+          color: #ffffff;
+          background: linear-gradient(145deg, #1ea07a 0%, #137f60 100%);
           cursor: pointer;
           white-space: nowrap;
-          transition: filter .2s;
-          animation: pulse 2.5s infinite;
-        }
-        .search-bar button:hover { filter: brightness(1.08); }
-
-        /* ── section titles ────────────────────────────── */
-        .section-title {
-          text-align: center;
-          font-size: 28px;
-          font-weight: 800;
-          color: #0f2e26;
-          margin: 0 0 8px;
-        }
-        .section-sub {
-          text-align: center;
-          color: #5a7b72;
-          margin: 0 0 32px;
-          font-size: 15px;
         }
 
-        /* ── feature cards ─────────────────────────────── */
-        .features {
+        .verify-form button:hover {
+          filter: brightness(1.05);
+        }
+
+        .feature-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-          gap: 20px;
-          margin-bottom: 56px;
-          animation: fadeUp .8s ease both;
-          animation-delay: .15s;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
         }
+
         .feature-card {
           border-radius: 16px;
-          padding: 32px 26px;
-          color: #fff;
-          position: relative;
-          overflow: hidden;
-          transition: transform .25s, box-shadow .25s;
+          color: #ffffff;
+          padding: 20px;
+          min-height: 160px;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          box-shadow: 0 12px 28px rgba(17, 33, 52, 0.12);
         }
-        .feature-card:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 12px 32px rgba(0,0,0,.18);
-        }
-        .feature-card .icon {
-          font-size: 36px;
-          margin-bottom: 12px;
-          display: block;
-        }
+
         .feature-card h3 {
-          margin: 0 0 8px;
-          font-size: 20px;
-          font-weight: 800;
+          margin: 0 0 10px;
+          font-size: 21px;
+          line-height: 1.2;
         }
+
         .feature-card p {
           margin: 0;
-          font-size: 14px;
           line-height: 1.55;
-          opacity: .92;
+          font-size: 14px;
+          opacity: 0.95;
         }
 
-        /* ── product cards ─────────────────────────────── */
-        .products {
+        .feature-card.teal {
+          background: linear-gradient(150deg, #0d8e88 0%, #14b8a6 100%);
+        }
+
+        .feature-card.purple {
+          background: linear-gradient(150deg, #6d3ff2 0%, #9568ff 100%);
+        }
+
+        .feature-card.amber {
+          background: linear-gradient(150deg, #bc6a08 0%, #e59d1c 100%);
+        }
+
+        .section-title {
+          margin: 0 0 12px;
+          font-size: clamp(24px, 3vw, 32px);
+          color: #11352f;
+          letter-spacing: -0.01em;
+        }
+
+        .product-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-          gap: 20px;
-          margin-bottom: 56px;
-          animation: fadeUp .8s ease both;
-          animation-delay: .3s;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
         }
+
         .product-card {
-          background: #fff;
-          border: 1px solid #dceee7;
+          border: 1px solid #d8e9e2;
           border-radius: 16px;
-          padding: 28px 24px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 10px;
-          transition: transform .25s, box-shadow .25s;
+          padding: 16px;
+          background: #ffffff;
+          display: grid;
+          gap: 12px;
         }
-        .product-card:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 8px 28px rgba(0,0,0,.08);
-        }
+
         .product-card h4 {
           margin: 0;
-          font-size: 17px;
-          font-weight: 700;
-          color: #0f2e26;
-          text-align: center;
+          font-size: 18px;
+          color: #163d35;
+          line-height: 1.35;
         }
-        .product-card .artisan {
-          font-size: 13px;
-          color: #5a7b72;
+
+        .artisan-name {
+          margin: 0;
+          color: #4a685f;
+          font-size: 14px;
         }
-        .product-card .btn-prov {
-          margin-top: auto;
+
+        .prov-btn {
           display: inline-block;
           text-decoration: none;
-          background: #e8f5f1;
-          color: #0d7a5f;
-          font-weight: 700;
-          font-size: 13px;
-          padding: 9px 18px;
+          border: 1px solid #bfdcd1;
           border-radius: 10px;
-          border: 1px solid #b7ded0;
-          transition: background .2s, color .2s;
-        }
-        .product-card .btn-prov:hover {
-          background: #10b981;
-          color: #fff;
-          border-color: #10b981;
+          padding: 10px 12px;
+          background: #edf8f4;
+          color: #125f47;
+          font-weight: 700;
+          font-size: 14px;
         }
 
-        /* ── stats bar ─────────────────────────────────── */
+        .prov-btn:hover {
+          background: #dbf2e9;
+        }
+
         .stats-bar {
-          display: flex;
-          justify-content: center;
-          flex-wrap: wrap;
-          gap: 0;
-          background: linear-gradient(135deg, #0f2e26 0%, #164e3f 100%);
-          border-radius: 16px;
-          padding: 32px 24px;
-          animation: fadeUp .8s ease both;
-          animation-delay: .45s;
-          margin-bottom: 24px;
-        }
-        .stat-item {
-          flex: 1 1 180px;
+          border: 1px solid #cfe3dc;
+          border-radius: 14px;
+          background: linear-gradient(120deg, #143d34 0%, #1c5648 100%);
+          color: #e2f7ef;
           text-align: center;
-          padding: 8px 16px;
-          position: relative;
-        }
-        .stat-item:not(:last-child)::after {
-          content: '';
-          position: absolute;
-          right: 0;
-          top: 15%;
-          height: 70%;
-          width: 1px;
-          background: rgba(255,255,255,.18);
-        }
-        .stat-value {
-          font-size: 32px;
-          font-weight: 900;
-          color: #34d399;
-          display: block;
-        }
-        .stat-label {
-          font-size: 13px;
-          color: rgba(255,255,255,.7);
-          margin-top: 4px;
-          display: block;
+          font-size: clamp(15px, 2.6vw, 19px);
+          font-weight: 700;
+          padding: 18px 14px;
+          line-height: 1.5;
         }
 
-        @media (max-width: 600px) {
-          .hero h1 { font-size: 28px; }
-          .search-bar { flex-direction: column; border-radius: 14px; }
-          .search-bar input { border-right: 2px solid #d1e8e0; border-radius: 14px 14px 0 0; }
-          .search-bar button { border-radius: 0 0 14px 14px; }
-          .stat-item:not(:last-child)::after { display: none; }
+        @media (max-width: 980px) {
+          .feature-grid,
+          .product-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .verify-form {
+            grid-template-columns: 1fr;
+          }
+
+          .verify-form button {
+            padding: 12px;
+          }
         }
       `}</style>
 
-      {/* ── HERO ──────────────────────────────────────── */}
-      <section className="hero">
-        <h1>
-          Is your product <span>really</span> from<br />where it claims?
-        </h1>
+      <div className="hero">
+        <h1>Is your product really from where it claims?</h1>
         <p>
-          Scan any Parampara-registered product to verify its origin, trace its
-          journey, and see its live Terroir Score.
+          Scan any Pramaan-registered product to verify its origin,
+          trace its journey, and see its live Terroir Score.
         </p>
-        <form className="search-bar" onSubmit={handleVerify}>
+
+        <form className="verify-form" onSubmit={onVerify}>
           <input
             type="text"
             placeholder="Enter product hash or scan QR code"
             value={hash}
-            onChange={(e) => setHash(e.target.value)}
+            onChange={(event) => setHash(event.target.value)}
           />
           <button type="submit">Verify Now</button>
         </form>
-      </section>
-
-      {/* ── FEATURES ──────────────────────────────────── */}
-      <h2 className="section-title">Why Parampara?</h2>
-      <p className="section-sub">Three pillars that make craft fraud impossible.</p>
-      <div className="features">
-        {features.map((f) => (
-          <div
-            key={f.title}
-            className="feature-card"
-            style={{ background: f.bg }}
-          >
-            <span className="icon">{f.icon}</span>
-            <h3>{f.title}</h3>
-            <p>{f.desc}</p>
-          </div>
-        ))}
       </div>
 
-      {/* ── DEMO PRODUCTS ─────────────────────────────── */}
-      <h2 className="section-title">Recently Registered</h2>
-      <p className="section-sub">Live products on the Parampara ledger.</p>
-      <div className="products">
-        {demoProducts.map((p) => (
-          <div key={p.name} className="product-card">
-            <TerroirScore score={p.terroir} />
-            <h4>{p.name}</h4>
-            <span className="artisan">Artisan: {p.artisan}</span>
-            <Link href="/verify" className="btn-prov">
-              View Full Provenance →
-            </Link>
-          </div>
-        ))}
+      <div>
+        <h2 className="section-title">Why Pramaan Works</h2>
+        <div className="feature-grid">
+          {featureCards.map((card) => (
+            <article key={card.title} className={"feature-card " + card.className}>
+              <h3>{card.title}</h3>
+              <p>{card.desc}</p>
+            </article>
+          ))}
+        </div>
       </div>
 
-      {/* ── STATS BAR ─────────────────────────────────── */}
+      <div>
+        <h2 className="section-title">Demo Registered Products</h2>
+        <div className="product-grid">
+          {demoProducts.map((product) => (
+            <article key={product.name} className="product-card">
+              <h4>{product.name}</h4>
+              <p className="artisan-name">Artisan: {product.artisan}</p>
+              <TerritorScore score={product.terroir} />
+              <Link href="/verify" className="prov-btn">
+                View Full Provenance
+              </Link>
+            </article>
+          ))}
+        </div>
+      </div>
+
       <div className="stats-bar">
-        {stats.map((s) => (
-          <div key={s.label} className="stat-item">
-            <span className="stat-value">{s.value}</span>
-            <span className="stat-label">{s.label}</span>
-          </div>
-        ))}
+        2,847 Products Registered  |  891 Verified Artisans  |  14 GI Tags Covered
       </div>
-    </>
+    </section>
   );
 }
