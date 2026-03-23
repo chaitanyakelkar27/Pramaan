@@ -228,7 +228,8 @@ export default function TransferPage() {
       setTransferSuccess({
         txUrl: txHash ? "https://sepolia.etherscan.io/tx/" + txHash : "",
         newTerroir: refreshed.terroir,
-        artisanPaymentEth: artisanPayment.toFixed(6)
+        artisanPaymentEth: artisanPayment.toFixed(6),
+        retailerQrUrl: "/retailer-verify?productHash=" + encodeURIComponent(hash.trim())
       });
       setStatus("Transfer completed successfully.");
     } catch (error) {
@@ -712,6 +713,11 @@ export default function TransferPage() {
               <CardContent className="grid gap-2 text-[#355]">
                 <p className="m-0">New Terroir Score: {transferSuccess.newTerroir}</p>
                 <p className="m-0">Artisan payment: {transferSuccess.artisanPaymentEth} ETH</p>
+                {transferSuccess.retailerQrUrl && (
+                  <Link href={transferSuccess.retailerQrUrl} className="w-fit no-underline">
+                    <Button type="button" variant="outline">Generate Retailer QR</Button>
+                  </Link>
+                )}
                 {transferSuccess.txUrl && (
                   <p className="m-0">
                     Etherscan:{" "}
