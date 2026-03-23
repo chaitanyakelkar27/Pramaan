@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogInWithAnonAadhaar, useAnonAadhaar } from "@anon-aadhaar/react";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { Input } from "../../components/ui/input";
 import { craftTypes, detectCraft, giRegions } from "../../src/utils/craftDetector";
 import { uploadToIPFS } from "../../src/utils/ipfs";
 import { connectWallet, getArtisan, isVerifiedArtisan, markAadhaarVerified, registerArtisan } from "../../src/utils/contract";
@@ -428,200 +432,164 @@ export default function ArtisanPage() {
 
   if (!hydrated) {
     return (
-      <section style={{ display: "grid", gap: 16 }}>
-        <h1 style={{ margin: 0 }}>Register as Artisan</h1>
-        <p style={{ margin: 0, color: "#466" }}>Loading secure verification...</p>
+      <section className="grid gap-4">
+        <h1 className="m-0 text-3xl font-bold text-[#20473d]">Register as Artisan</h1>
+        <p className="m-0 text-[#49665e]">Loading secure verification...</p>
       </section>
     );
   }
 
   return (
-    <section style={{ display: "grid", gap: 16 }}>
-      <h1 style={{ margin: 0 }}>Register as Artisan</h1>
-      <p style={{ margin: 0, color: "#466" }}>Only submissions with craft score 60+ pass the on-chain gate.</p>
+    <section className="grid gap-6">
+      <div className="grid gap-2">
+        <h1 className="m-0 text-3xl font-bold text-[#20473d]">Register as Artisan</h1>
+        <p className="m-0 text-[#49665e]">Only submissions with craft score 60+ pass the on-chain gate.</p>
+      </div>
 
-      <button onClick={onConnect} style={buttonStyle}>
-        {wallet ? "Connected: " + wallet.slice(0, 8) + "..." : "Connect Wallet"}
-      </button>
+      <div>
+        <Button onClick={onConnect} className="min-w-44">
+          {wallet ? "Connected: " + wallet.slice(0, 8) + "..." : "Connect Wallet"}
+        </Button>
+      </div>
 
-      <form onSubmit={onSubmit} style={formStyle}>
-        <input
-          required
-          placeholder="Artisan name"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          style={inputStyle}
-        />
-
-        <select
-          required
-          value={form.craft}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              craft: e.target.value,
-              giRegion: giRegions[e.target.value] || ""
-            })
-          }
-          style={inputStyle}
-        >
-          {craftTypes.map((craftType) => (
-            <option key={craftType} value={craftType}>
-              {craftType}
-            </option>
-          ))}
-        </select>
-
-        <input
-          required
-          placeholder="GI Region"
-          value={form.giRegion}
-          readOnly
-          style={inputStyle}
-        />
-
-        <div
-          style={{
-            border: "1px solid #d9ebe4",
-            borderRadius: 10,
-            padding: 12,
-            background: "#f8fcfa",
-            display: "grid",
-            gap: 10
-          }}
-        >
-          <div style={{ fontWeight: 700, color: "#1f5b4b" }}>Anon Aadhaar Verification</div>
-          <div
-            style={{
-              background: anonStatusInfo.bg,
-              color: anonStatusInfo.color,
-              border: "1px solid " + anonStatusInfo.color,
-              borderRadius: 8,
-              padding: "8px 10px",
-              fontWeight: 700
-            }}
-          >
-            {anonStatusInfo.label}
-          </div>
-
-          <LogInWithAnonAadhaar nullifierSeed={aadhaarNullifierSeed} fieldsToReveal={[]} />
-
-          <button
-            type="button"
-            onClick={onSyncAadhaarOnChain}
-            disabled={!isAnonVerified || syncingAadhaar}
-            style={{
-              ...buttonStyle,
-              background: !isAnonVerified || syncingAadhaar ? "#9bc2b4" : "#1D9E75"
-            }}
-          >
-            {syncingAadhaar
-              ? "Syncing Aadhaar..."
-              : aadhaarSyncedOnChain
-                ? "Aadhaar Synced On-Chain"
-                : "Sync Aadhaar Status On-Chain (wallet prompt)"}
-          </button>
-
-          {aadhaarSyncedOnChain && (
-            <div
-              style={{
-                border: "1px solid #3e9f74",
-                background: "#dcf8e8",
-                color: "#1c664c",
-                borderRadius: 8,
-                padding: "8px 10px",
-                fontWeight: 700
-              }}
-            >
-              On-chain Aadhaar flag updated for connected wallet.
-            </div>
-          )}
-        </div>
-
-        <input
-          required
-          type="file"
-          accept="image/*"
-          onChange={onImageChange}
-          style={inputStyle}
-        />
-
-        {imagePreviewUrl && (
-          <div style={{ display: "grid", gap: 8 }}>
-            <img
-              src={imagePreviewUrl}
-              alt="Craft preview"
-              style={{ width: "100%", maxWidth: 360, borderRadius: 10, border: "1px solid #d3e6df" }}
+      <Card className="max-w-3xl">
+        <CardHeader>
+          <CardTitle>Identity and Craft Verification</CardTitle>
+          <CardDescription>Complete wallet, Aadhaar proof, and image analysis before minting identity.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmit} className="grid gap-3">
+            <Input
+              required
+              placeholder="Artisan name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
-          </div>
-        )}
 
-        {isAnalyzing && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div className="spinner" />
-            <span style={{ color: "#355" }}>Analyzing craft authenticity...</span>
-          </div>
-        )}
+            <select
+              required
+              value={form.craft}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  craft: e.target.value,
+                  giRegion: giRegions[e.target.value] || ""
+                })
+              }
+              className="flex h-11 w-full rounded-xl border border-[#cfe2db] bg-white px-3 py-2 text-sm text-[#1f2937] outline-none transition focus-visible:ring-2 focus-visible:ring-[#7fc2ac]"
+            >
+              {craftTypes.map((craftType) => (
+                <option key={craftType} value={craftType}>
+                  {craftType}
+                </option>
+              ))}
+            </select>
 
-        {scoreInfo && (
-          <div
-            style={{
-              background: scoreInfo.bg,
-              color: scoreInfo.color,
-              border: "1px solid " + scoreInfo.color,
-              borderRadius: 10,
-              padding: "8px 10px",
-              fontWeight: 700
-            }}
-          >
-            Score: {craftScore} - {scoreInfo.text}
-          </div>
-        )}
+            <Input
+              required
+              placeholder="GI Region"
+              value={form.giRegion}
+              readOnly
+            />
 
-        <button type="button" onClick={onTryFakeDemo} style={demoButtonStyle}>
-          Try Fake Artisan Demo
-        </button>
+            <div className="grid gap-3 rounded-xl border border-[#d9ebe4] bg-[#f8fcfa] p-3">
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-[#1f5b4b]">Anon Aadhaar Verification</div>
+                <Badge variant="neutral">Required</Badge>
+              </div>
+              <div
+                className="rounded-lg border px-3 py-2 font-semibold"
+                style={{ background: anonStatusInfo.bg, color: anonStatusInfo.color, borderColor: anonStatusInfo.color }}
+              >
+                {anonStatusInfo.label}
+              </div>
 
-        <button disabled={registerDisabled} type="submit" style={buttonStyle}>
-          {loading ? "Submitting..." : "Register Artisan"}
-        </button>
+              <LogInWithAnonAadhaar nullifierSeed={aadhaarNullifierSeed} fieldsToReveal={[]} />
 
-        {stepProgress && (
-          <div
-            style={{
-              border: "1px dashed #b4d8cb",
-              borderRadius: 8,
-              padding: "8px 10px",
-              color: "#2f5a50",
-              background: "#eff8f4"
-            }}
-          >
-            {stepProgress}
-          </div>
-        )}
-      </form>
+              <Button
+                type="button"
+                onClick={onSyncAadhaarOnChain}
+                disabled={!isAnonVerified || syncingAadhaar}
+                className="w-fit"
+              >
+                {syncingAadhaar
+                  ? "Syncing Aadhaar..."
+                  : aadhaarSyncedOnChain
+                    ? "Aadhaar Synced On-Chain"
+                    : "Sync Aadhaar Status On-Chain (wallet prompt)"}
+              </Button>
 
-      {message && <p style={{ margin: 0, color: "#355" }}>{message}</p>}
+              {aadhaarSyncedOnChain && (
+                <div className="rounded-lg border border-[#3e9f74] bg-[#dcf8e8] px-3 py-2 font-semibold text-[#1c664c]">
+                  On-chain Aadhaar flag updated for connected wallet.
+                </div>
+              )}
+            </div>
+
+            <Input
+              required
+              type="file"
+              accept="image/*"
+              onChange={onImageChange}
+            />
+
+            {imagePreviewUrl && (
+              <div className="grid gap-2">
+                <img
+                  src={imagePreviewUrl}
+                  alt="Craft preview"
+                  className="w-full max-w-md rounded-xl border border-[#d3e6df]"
+                />
+              </div>
+            )}
+
+            {isAnalyzing && (
+              <div className="flex items-center gap-2">
+                <div className="spinner" />
+                <span className="text-[#355]">Analyzing craft authenticity...</span>
+              </div>
+            )}
+
+            {scoreInfo && (
+              <div
+                className="rounded-xl border px-3 py-2 font-semibold"
+                style={{ background: scoreInfo.bg, color: scoreInfo.color, borderColor: scoreInfo.color }}
+              >
+                Score: {craftScore} - {scoreInfo.text}
+              </div>
+            )}
+
+            <Button type="button" variant="secondary" onClick={onTryFakeDemo} className="w-fit border-[#e9bcbc] bg-[#fff5f5] text-[#8a1f1f] hover:bg-[#ffecec]">
+              Try Fake Artisan Demo
+            </Button>
+
+            <Button disabled={registerDisabled} type="submit" className="w-fit">
+              {loading ? "Submitting..." : "Register Artisan"}
+            </Button>
+
+            {stepProgress && (
+              <div className="rounded-lg border border-dashed border-[#b4d8cb] bg-[#eff8f4] px-3 py-2 text-[#2f5a50]">
+                {stepProgress}
+              </div>
+            )}
+          </form>
+        </CardContent>
+      </Card>
+
+      {message && <p className="m-0 text-[#355]">{message}</p>}
 
       {success && (
-        <div
-          style={{
-            marginTop: 4,
-            background: "#dcf8e8",
-            border: "1px solid #3e9f74",
-            borderRadius: 10,
-            padding: "10px 12px",
-            color: "#1c664c"
-          }}
-        >
-          <div style={{ fontWeight: 700 }}>Soulbound Identity minted successfully.</div>
-          <div>SBT Token ID: {success.tokenId}</div>
-          {success.txUrl && (
-            <a href={success.txUrl} target="_blank" rel="noreferrer" style={{ color: "#116f4f", fontWeight: 700 }}>
-              View on Etherscan
-            </a>
-          )}
-        </div>
+        <Card className="max-w-3xl border-[#3e9f74] bg-[#dcf8e8] text-[#1c664c]">
+          <CardContent className="grid gap-1 p-4">
+            <div className="font-semibold">Soulbound Identity minted successfully.</div>
+            <div>SBT Token ID: {success.tokenId}</div>
+            {success.txUrl && (
+              <a href={success.txUrl} target="_blank" rel="noreferrer" className="font-semibold text-[#116f4f]">
+                View on Etherscan
+              </a>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       <style jsx>{`
@@ -643,42 +611,3 @@ export default function ArtisanPage() {
     </section>
   );
 }
-
-const formStyle = {
-  display: "grid",
-  gap: 10,
-  maxWidth: 560,
-  background: "#fff",
-  border: "1px solid #d9ebe4",
-  borderRadius: 12,
-  padding: 14
-};
-
-const inputStyle = {
-  border: "1px solid #cfe2db",
-  borderRadius: 8,
-  padding: "10px 12px",
-  fontSize: 14
-};
-
-const buttonStyle = {
-  background: "#1D9E75",
-  color: "white",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content"
-};
-
-const demoButtonStyle = {
-  background: "#fff5f5",
-  color: "#8a1f1f",
-  border: "1px solid #e9bcbc",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  width: "fit-content"
-};
