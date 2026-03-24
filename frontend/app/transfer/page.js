@@ -61,6 +61,9 @@ export default function TransferPage() {
   const [nftOwnerLive, setNftOwnerLive] = useState("");
   const [tokenLookupLoading, setTokenLookupLoading] = useState(false);
   const [mintingFromProduct, setMintingFromProduct] = useState(false);
+  const [escrowLookupId, setEscrowLookupId] = useState("");
+  const [connectedWallet, setConnectedWallet] = useState("");
+  const [buyerShareLink, setBuyerShareLink] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -70,9 +73,15 @@ export default function TransferPage() {
     const params = new URLSearchParams(window.location.search);
     const hashFromUrl = params.get("hash") || "";
     const tokenIdFromUrl = params.get("tokenId") || "";
+    const escrowIdFromUrl = params.get("escrowId") || "";
 
     if (tokenIdFromUrl && /^\d+$/.test(tokenIdFromUrl) && Number(tokenIdFromUrl) > 0) {
       setEscrowTokenId(tokenIdFromUrl);
+    }
+
+    if (escrowIdFromUrl && /^\d+$/.test(escrowIdFromUrl) && Number(escrowIdFromUrl) > 0) {
+      setEscrowLookupId(escrowIdFromUrl);
+      loadEscrow(escrowIdFromUrl);
     }
 
     if (!hashFromUrl) {
@@ -88,6 +97,58 @@ export default function TransferPage() {
       resolveOwnerInput(newOwnerInput);
     }
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function initWalletAndEscrowLookup() {
+      try {
+        const address = await getConnectedAddress();
+        if (mounted) {
+          setConnectedWallet(address);
+        }
+      } catch (_error) {
+        // Ignore initial wallet fetch errors.
+      }
+
+      if (typeof window !== "undefined") {
+        const lastEscrowId = window.localStorage.getItem("pramaan:lastEscrowId") || "";
+        if (lastEscrowId && /^\d+$/.test(lastEscrowId) && mounted) {
+          setEscrowLookupId(lastEscrowId);
+        }
+      }
+    }
+
+    initWalletAndEscrowLookup();
+
+    if (typeof window !== "undefined" && window.ethereum?.on) {
+      const onAccountsChanged = (accounts) => {
+        const next = Array.isArray(accounts) && accounts[0] ? String(accounts[0]) : "";
+        setConnectedWallet(next);
+      };
+
+      window.ethereum.on("accountsChanged", onAccountsChanged);
+
+      return () => {
+        mounted = false;
+        try {
+          window.ethereum.removeListener("accountsChanged", onAccountsChanged);
+        } catch (_error) {
+          // Ignore listener cleanup errors.
+        }
+      };
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (escrowId) {
+      setEscrowLookupId(String(escrowId));
+    }
+  }, [escrowId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -498,6 +559,7 @@ export default function TransferPage() {
     setEscrowLoading(true);
     try {
       const details = await getEscrowDetails(id);
+      setEscrowId(String(id));
       setEscrowData(details);
       try {
         const liveOwner = await getProductNftOwner(details.tokenId);
@@ -516,6 +578,10 @@ export default function TransferPage() {
         setEscrowStep(4);
       }
       setEscrowStatusText("Escrow details loaded.");
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("pramaan:lastEscrowId", String(id));
+      }
     } catch (error) {
       setEscrowData(null);
       setNftOwnerLive("");
@@ -580,6 +646,7 @@ export default function TransferPage() {
 
       setEscrowSeller(derivedSeller);
       setEscrowId(String(createdEscrowId));
+      setEscrowLookupId(String(createdEscrowId));
       setEscrowStep(2);
       setEscrowStatusText(
         "Escrow created (ID " +
@@ -589,6 +656,10 @@ export default function TransferPage() {
 
       await loadEscrow(createdEscrowId);
 
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("pramaan:lastEscrowId", String(createdEscrowId));
+      }
+
       const txHash = receipt?.transactionHash || receipt?.hash || "";
       if (txHash) {
         setEscrowStatusText(
@@ -597,6 +668,18 @@ export default function TransferPage() {
           "). Etherscan: https://sepolia.etherscan.io/tx/" +
           txHash
         );
+      }
+
+      if (typeof window !== "undefined") {
+        const query = new URLSearchParams();
+        if (hash) {
+          query.set("hash", hash.trim());
+        }
+        query.set("escrowId", String(createdEscrowId));
+        if (escrowTokenId && /^\d+$/.test(String(escrowTokenId))) {
+          query.set("tokenId", String(escrowTokenId));
+        }
+        setBuyerShareLink(window.location.origin + "/transfer?" + query.toString());
       }
     } catch (error) {
       const raw = extractReadableError(error, "Escrow creation failed.");
@@ -857,6 +940,21 @@ export default function TransferPage() {
     percent: Math.floor(calculateRoyaltyPercent(n))
   }));
 
+  const connectedRole = useMemo(() => {
+    if (!escrowData || !connectedWallet) {
+      return "viewer";
+    }
+
+    const w = connectedWallet.toLowerCase();
+    if (w === String(escrowData.buyer || "").toLowerCase()) {
+      return "buyer";
+    }
+    if (w === String(escrowData.seller || "").toLowerCase()) {
+      return "seller";
+    }
+    return "viewer";
+  }, [escrowData, connectedWallet]);
+
   return (
     <section className="grid gap-6">
       <div className="grid gap-2">
@@ -934,7 +1032,37 @@ export default function TransferPage() {
               <p className="m-0">Provenance owner (this hash): {truncateAddress(currentOwner || escrowSeller)}</p>
               <p className="m-0 mt-1">NFT owner (this token): {truncateAddress(nftOwnerLive)}</p>
               {escrowId && <p className="m-0 mt-1">Escrow ID (auto): {escrowId}</p>}
+              <p className="m-0 mt-1">Connected wallet: {truncateAddress(connectedWallet)}</p>
+              {escrowData && <p className="m-0 mt-1">Role for loaded escrow: {connectedRole}</p>}
             </div>
+
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+              <Input
+                suppressHydrationWarning
+                type="number"
+                min="1"
+                value={escrowLookupId}
+                onChange={(e) => setEscrowLookupId(e.target.value)}
+                placeholder="Load existing Escrow ID"
+              />
+              <Button
+                suppressHydrationWarning
+                type="button"
+                variant="outline"
+                disabled={escrowLoading || !escrowLookupId}
+                onClick={() => loadEscrow(escrowLookupId)}
+                className="w-fit"
+              >
+                Load Escrow by ID
+              </Button>
+            </div>
+
+            {buyerShareLink && (
+              <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3 text-sm text-[#355]">
+                <p className="m-0 font-semibold">Buyer Confirm Link (share with friend)</p>
+                <p className="m-0 mt-1 break-all">{buyerShareLink}</p>
+              </div>
+            )}
 
             {escrowStep === 1 && (
               <Button suppressHydrationWarning type="submit" disabled={escrowLoading} className="w-fit">
