@@ -35,6 +35,26 @@ const publicClient = createPublicClient({
 const DEMO_BUYER_ADDRESS = "0x71C0000000000000000000000000000000000000";
 const ESCROW_ONLY_MODE = true;
 
+function getShareBaseUrl() {
+  const configured =
+    String(process.env.NEXT_PUBLIC_APP_URL || "").trim() ||
+    String(process.env.NEXT_PUBLIC_VERCEL_URL || "").trim();
+
+  if (configured) {
+    const normalized = configured.replace(/\/$/, "");
+    if (/^https?:\/\//i.test(normalized)) {
+      return normalized;
+    }
+    return "https://" + normalized;
+  }
+
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+
+  return "";
+}
+
 export default function TransferPage() {
   const [hash, setHash] = useState("");
   const [recordState, setRecordState] = useState(null);
@@ -679,7 +699,8 @@ export default function TransferPage() {
         if (escrowTokenId && /^\d+$/.test(String(escrowTokenId))) {
           query.set("tokenId", String(escrowTokenId));
         }
-        setBuyerShareLink(window.location.origin + "/transfer?" + query.toString());
+        const baseUrl = getShareBaseUrl();
+        setBuyerShareLink(baseUrl + "/transfer?" + query.toString());
       }
     } catch (error) {
       const raw = extractReadableError(error, "Escrow creation failed.");
@@ -798,18 +819,47 @@ export default function TransferPage() {
   }
 
   async function onApproveTokenForEscrow() {
-    if (!escrowTokenId) {
-      setEscrowStatusText("Enter token ID to approve.");
+    if (!escrowId) {
+      setEscrowStatusText("Escrow ID is missing. Create or load escrow first.");
       return;
     }
 
     setEscrowLoading(true);
     setEscrowStatusText("Approving escrow contract for token transfer...");
     try {
-      await approveEscrowForToken(Number(escrowTokenId));
+      const details = await getEscrowDetails(Number(escrowId));
+      const tokenIdForEscrow = Number(details?.tokenId || 0);
+      const escrowSeller = String(details?.seller || "");
+      const connected = (await getConnectedAddress()).toLowerCase();
+
+      if (!tokenIdForEscrow) {
+        setEscrowStatusText("Could not resolve token ID from escrow details.");
+        return;
+      }
+
+      if (connected !== escrowSeller.toLowerCase()) {
+        setEscrowStatusText(
+          "Approve failed: switch to seller wallet " + truncateAddress(escrowSeller) + "."
+        );
+        return;
+      }
+
+      const owner = await getProductNftOwner(tokenIdForEscrow);
+      if (String(owner).toLowerCase() !== connected) {
+        setEscrowStatusText(
+          "Approve failed: connected wallet is not NFT owner " + truncateAddress(owner) + "."
+        );
+        return;
+      }
+
+      setEscrowTokenId(String(tokenIdForEscrow));
+      setEscrowSeller(escrowSeller);
+
+      await approveEscrowForToken(tokenIdForEscrow);
       setEscrowStatusText("Token approved for escrow contract.");
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Approval failed.");
+      const raw = extractReadableError(error, "Approval failed.");
+      setEscrowStatusText(mapEscrowError(raw, "Approval failed."));
     } finally {
       setEscrowLoading(false);
     }
@@ -822,7 +872,7 @@ export default function TransferPage() {
     }
 
     setEscrowLoading(true);
-    setEscrowStatusText("Approving token and marking escrow as shipped...");
+    setEscrowStatusText("Marking escrow as shipped...");
     try {
       const details = await getEscrowDetails(Number(escrowId));
       const tokenIdForEscrow = Number(details?.tokenId || 0);
@@ -852,11 +902,10 @@ export default function TransferPage() {
       setEscrowTokenId(String(tokenIdForEscrow));
       setEscrowSeller(escrowSeller);
 
-      await approveEscrowForToken(tokenIdForEscrow);
       await markEscrowShipped(Number(escrowId));
       await loadEscrow(escrowId);
       setEscrowStep(3);
-      setEscrowStatusText("Escrow marked as shipped.");
+      setEscrowStatusText("Escrow marked as shipped. Seller should approve token if not already approved.");
     } catch (error) {
       const raw = extractReadableError(error, "Could not mark shipped.");
       setEscrowStatusText(mapEscrowError(raw, "Could not mark shipped."));
@@ -1061,6 +1110,11 @@ export default function TransferPage() {
               <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3 text-sm text-[#355]">
                 <p className="m-0 font-semibold">Buyer Confirm Link (share with friend)</p>
                 <p className="m-0 mt-1 break-all">{buyerShareLink}</p>
+                {(buyerShareLink.includes("localhost") || buyerShareLink.includes("127.0.0.1")) && (
+                  <p className="m-0 mt-2 text-[#8a5b09]">
+                    This link is local to your PC. Set NEXT_PUBLIC_APP_URL in frontend/.env.local to your public URL.
+                  </p>
+                )}
               </div>
             )}
 
@@ -1071,9 +1125,14 @@ export default function TransferPage() {
             )}
 
             {escrowStep === 2 && (
-              <Button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onMarkShipped} variant="secondary" className="w-fit">
-                {escrowLoading ? "Working..." : "Mark Shipped"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onApproveTokenForEscrow} variant="outline" className="w-fit">
+                  {escrowLoading ? "Working..." : "Approve Token"}
+                </Button>
+                <Button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onMarkShipped} variant="secondary" className="w-fit">
+                  {escrowLoading ? "Working..." : "Mark Shipped"}
+                </Button>
+              </div>
             )}
 
             {escrowStep === 3 && (
