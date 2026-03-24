@@ -13,21 +13,26 @@ import {
   approveEscrowForToken,
   confirmEscrowReceived,
   createEscrowSale,
+  findLatestMintedTokenIdByRecipient,
+  getConnectedAddress,
   getArtisan,
   getEscrowDetails,
+  getProductNftOwner,
   markEscrowShipped,
-  raiseEscrowDispute,
+  mintProductTwin,
   transferProduct,
-  verifyProduct,
-  cancelEscrowExpired
+  verifyProduct
 } from "../../src/utils/contract";
 import { RPC_URL } from "../../src/utils/constants";
 import { appendEvidenceEntry } from "../../src/utils/evidence";
+import { getIPFSUrl } from "../../src/utils/ipfs";
 
 const publicClient = createPublicClient({
   chain: sepolia,
   transport: http(RPC_URL)
 });
+
+const DEMO_BUYER_ADDRESS = "0x71C0000000000000000000000000000000000000";
 
 export default function TransferPage() {
   const [hash, setHash] = useState("");
@@ -36,22 +41,25 @@ export default function TransferPage() {
   const [loading, setLoading] = useState(false);
   const [stepProgress, setStepProgress] = useState("");
 
-  const [newOwnerInput, setNewOwnerInput] = useState("");
+  const [newOwnerInput, setNewOwnerInput] = useState(DEMO_BUYER_ADDRESS);
   const [resolvedAddress, setResolvedAddress] = useState("");
   const [ensInfo, setEnsInfo] = useState("");
   const [newOwnerVerified, setNewOwnerVerified] = useState(null);
 
-  const [paymentEth, setPaymentEth] = useState("0.05");
+  const [paymentEth, setPaymentEth] = useState("");
   const [transferSuccess, setTransferSuccess] = useState(null);
 
-  const [escrowTokenId, setEscrowTokenId] = useState("");
+  const [escrowTokenId, setEscrowTokenId] = useState("1");
   const [escrowSeller, setEscrowSeller] = useState("");
-  const [escrowAmountEth, setEscrowAmountEth] = useState("0.05");
+  const [escrowAmountEth, setEscrowAmountEth] = useState("");
   const [escrowId, setEscrowId] = useState("");
-  const [escrowDisputeReason, setEscrowDisputeReason] = useState("Buyer raised dispute");
   const [escrowLoading, setEscrowLoading] = useState(false);
   const [escrowStatusText, setEscrowStatusText] = useState("");
   const [escrowData, setEscrowData] = useState(null);
+  const [escrowStep, setEscrowStep] = useState(1);
+  const [nftOwnerLive, setNftOwnerLive] = useState("");
+  const [tokenLookupLoading, setTokenLookupLoading] = useState(false);
+  const [mintingFromProduct, setMintingFromProduct] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -60,6 +68,11 @@ export default function TransferPage() {
 
     const params = new URLSearchParams(window.location.search);
     const hashFromUrl = params.get("hash") || "";
+    const tokenIdFromUrl = params.get("tokenId") || "";
+
+    if (tokenIdFromUrl && /^\d+$/.test(tokenIdFromUrl) && Number(tokenIdFromUrl) > 0) {
+      setEscrowTokenId(tokenIdFromUrl);
+    }
 
     if (!hashFromUrl) {
       return;
@@ -67,6 +80,12 @@ export default function TransferPage() {
 
     setHash(hashFromUrl);
     loadProduct(hashFromUrl);
+  }, []);
+
+  useEffect(() => {
+    if (newOwnerInput) {
+      resolveOwnerInput(newOwnerInput);
+    }
   }, []);
 
   function truncateAddress(address) {
@@ -124,17 +143,94 @@ export default function TransferPage() {
       return;
     }
 
+    if (!/^0x[0-9a-fA-F]{64}$/.test(clean)) {
+      setStatus("Invalid product hash format. Expected 0x + 64 hex chars.");
+      return;
+    }
+
     setLoading(true);
     setStatus("Loading product from Sepolia...");
     setTransferSuccess(null);
 
     try {
-      const data = await verifyProduct(clean);
+      let data = null;
+      let lastError = null;
+      const maxAttempts = 4;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          data = await verifyProduct(clean);
+          break;
+        } catch (error) {
+          lastError = error;
+          const message = String(error?.shortMessage || error?.message || "").toLowerCase();
+          const isNotFound = message.includes("product not found");
+          if (!isNotFound || attempt === maxAttempts) {
+            throw error;
+          }
+
+          setStatus(
+            "Product not visible yet on RPC (attempt " +
+            attempt +
+            "/" +
+            maxAttempts +
+            "). Retrying..."
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+
+      if (!data) {
+        throw lastError || new Error("Could not load product.");
+      }
+
       setRecordState(data);
+      const ownerCandidate = getCurrentOwner(data?.record);
+      if (ownerCandidate) {
+        try {
+          const latestTokenId = await findLatestMintedTokenIdByRecipient(ownerCandidate);
+          if (latestTokenId > 0) {
+            setEscrowTokenId(String(latestTokenId));
+          }
+        } catch (_tokenLookupError) {
+          // Keep manual/tokenId-from-url value if lookup fails.
+        }
+      }
       setStatus("Product loaded.");
     } catch (error) {
+      const normalizedHash = clean.toLowerCase();
+      let usedSnapshot = false;
+      if (typeof window !== "undefined") {
+        try {
+          const rawSnapshot = window.sessionStorage.getItem("pramaan:lastRegisteredProduct");
+          if (rawSnapshot) {
+            const snapshot = JSON.parse(rawSnapshot);
+            const snapshotHash = String(snapshot?.hash || "").toLowerCase();
+            if (snapshotHash === normalizedHash && snapshot?.record) {
+              setRecordState({ record: snapshot.record, terroir: Number(snapshot?.terroir || 100) });
+              if (snapshot?.mintedTokenId && /^\d+$/.test(String(snapshot.mintedTokenId))) {
+                setEscrowTokenId(String(snapshot.mintedTokenId));
+              }
+              setStatus("Loaded recently registered product snapshot. On-chain verify is still syncing.");
+              usedSnapshot = true;
+            }
+          }
+        } catch (_snapshotError) {
+          // Ignore snapshot parse/read issues.
+        }
+      }
+
+      if (usedSnapshot) {
+        return;
+      }
+
       setRecordState(null);
-      setStatus(error?.shortMessage || error?.message || "Could not load product.");
+      const message = String(error?.shortMessage || error?.message || "");
+      if (message.toLowerCase().includes("product not found")) {
+        setStatus("Product not found on current ProductRegistry deployment. If just registered, wait a few seconds and retry.");
+      } else {
+        setStatus(message || "Could not load product.");
+      }
     } finally {
       setLoading(false);
     }
@@ -199,11 +295,23 @@ export default function TransferPage() {
       return;
     }
 
+    const ownerAddress = String(currentOwner || "").toLowerCase();
+    if (ownerAddress && targetAddress.toLowerCase() === ownerAddress) {
+      setStatus("New owner cannot be the same as current owner.");
+      return;
+    }
+
     setLoading(true);
     setTransferSuccess(null);
     setStepProgress("Step 1/2: Transferring ownership...");
 
     try {
+      const connectedAddress = (await getConnectedAddress()).toLowerCase();
+      if (ownerAddress && connectedAddress !== ownerAddress) {
+        setStatus("Switch wallet to current owner " + truncateAddress(currentOwner) + " to confirm transfer.");
+        return;
+      }
+
       const transferNumber = Number(recordState.record.transferCount || 0) + 1;
       const royaltyPercent = calculateRoyaltyPercent(transferNumber);
       const buyerPayment = Number(paymentEth || 0);
@@ -233,7 +341,20 @@ export default function TransferPage() {
       });
       setStatus("Transfer completed successfully.");
     } catch (error) {
-      setStatus(error?.shortMessage || error?.message || "Transfer failed.");
+      const raw = extractReadableError(error, "Transfer failed.");
+      const lower = raw.toLowerCase();
+
+      if (lower.includes("caller is not current owner")) {
+        setStatus("Transfer failed: connect the current owner wallet shown above.");
+      } else if (lower.includes("insufficient funds") || lower.includes("intrinsic gas") || lower.includes("gas required exceeds")) {
+        setStatus("Transfer failed: wallet needs more Sepolia ETH for gas and payment value.");
+      } else if (lower.includes("invalid new owner")) {
+        setStatus("Transfer failed: new owner wallet address is invalid.");
+      } else if (lower.includes("product not found")) {
+        setStatus("Transfer failed: product hash not found on Sepolia.");
+      } else {
+        setStatus(raw || "Transfer failed.");
+      }
     } finally {
       setLoading(false);
       setStepProgress("");
@@ -253,6 +374,89 @@ export default function TransferPage() {
     return labels[Number(status)] || "Unknown";
   }
 
+  function extractReadableError(error, fallbackMessage) {
+    const queue = [error];
+    const seen = new Set();
+    const candidates = [];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current || typeof current !== "object" || seen.has(current)) {
+        continue;
+      }
+      seen.add(current);
+
+      const fields = [
+        current.shortMessage,
+        current.details,
+        current.message,
+        current.reason,
+        current?.data?.message,
+        current?.error?.message
+      ].filter(Boolean);
+
+      for (const field of fields) {
+        const text = String(field).trim();
+        if (text) {
+          candidates.push(text);
+        }
+      }
+
+      if (current.cause) {
+        queue.push(current.cause);
+      }
+      if (current.error && typeof current.error === "object") {
+        queue.push(current.error);
+      }
+      if (current.data && typeof current.data === "object") {
+        queue.push(current.data);
+      }
+    }
+
+    for (const candidate of candidates) {
+      const revertMatch = candidate.match(/execution reverted:?[\s\"]*([^\n\"]+)/i);
+      if (revertMatch?.[1]) {
+        return revertMatch[1].trim();
+      }
+      if (!candidate.toLowerCase().includes("execution reverted")) {
+        return candidate;
+      }
+    }
+
+    return fallbackMessage;
+  }
+
+  function mapEscrowError(raw, fallbackMessage) {
+    const lower = String(raw || "").toLowerCase();
+
+    if (lower.includes("erc721: invalid token id") || lower.includes("invalid token id")) {
+      return "Escrow failed: this NFT Token ID is not minted on Sepolia. Use a valid minted token ID.";
+    }
+    if (lower.includes("buyer and seller cannot match")) {
+      return "Escrow failed: buyer and seller cannot be same wallet. Switch account and try again.";
+    }
+    if (lower.includes("only buyer can confirm")) {
+      return "Confirm failed: switch to the buyer wallet used to create escrow.";
+    }
+    if (lower.includes("not ready for confirmation")) {
+      return "Confirm failed: seller must mark shipped before buyer can confirm.";
+    }
+    if (lower.includes("confirmation window expired")) {
+      return "Confirm failed: confirmation window has expired. Raise dispute or create a new escrow.";
+    }
+    if (lower.includes("escrow contract not approved for token")) {
+      return "Confirm failed: seller must approve NFT to escrow contract and mark shipped again.";
+    }
+    if (lower.includes("seller no longer owner")) {
+      return "Confirm failed: seller no longer owns this NFT token.";
+    }
+    if (lower.includes("user rejected") || lower.includes("rejected the request") || lower.includes("action_rejected")) {
+      return "Transaction rejected in wallet.";
+    }
+
+    return raw || fallbackMessage;
+  }
+
   async function loadEscrow(idValue) {
     const id = Number(idValue);
     if (!Number.isFinite(id) || id <= 0) {
@@ -264,9 +468,26 @@ export default function TransferPage() {
     try {
       const details = await getEscrowDetails(id);
       setEscrowData(details);
+      try {
+        const liveOwner = await getProductNftOwner(details.tokenId);
+        setNftOwnerLive(liveOwner);
+      } catch (_ownerError) {
+        setNftOwnerLive("");
+      }
+      const statusNum = Number(details?.status || 0);
+      if (statusNum <= 0) {
+        setEscrowStep(1);
+      } else if (statusNum === 1) {
+        setEscrowStep(2);
+      } else if (statusNum === 2) {
+        setEscrowStep(3);
+      } else {
+        setEscrowStep(4);
+      }
       setEscrowStatusText("Escrow details loaded.");
     } catch (error) {
       setEscrowData(null);
+      setNftOwnerLive("");
       setEscrowStatusText(error?.shortMessage || error?.message || "Could not load escrow details.");
     } finally {
       setEscrowLoading(false);
@@ -276,8 +497,41 @@ export default function TransferPage() {
   async function onCreateEscrow(event) {
     event.preventDefault();
 
-    if (!escrowTokenId || !escrowSeller) {
-      setEscrowStatusText("Token ID and seller are required.");
+    if (!escrowTokenId) {
+      setEscrowStatusText("Token ID is required.");
+      return;
+    }
+
+    const derivedSeller = currentOwner || escrowSeller;
+    if (!derivedSeller || !String(derivedSeller).startsWith("0x") || String(derivedSeller).length !== 42) {
+      setEscrowStatusText("Load product first so seller wallet can be derived automatically.");
+      return;
+    }
+
+    if (!escrowAmountEth) {
+      setEscrowStatusText("Please enter escrow amount.");
+      return;
+    }
+
+    try {
+      const ownerOnNft = await getProductNftOwner(Number(escrowTokenId));
+      if (String(ownerOnNft).toLowerCase() !== String(derivedSeller).toLowerCase()) {
+        setEscrowStatusText(
+          "Escrow failed: seller wallet must match current NFT owner " + truncateAddress(ownerOnNft) + "."
+        );
+        return;
+      }
+    } catch (error) {
+      const raw = extractReadableError(error, "Invalid token ID.");
+      setEscrowStatusText(mapEscrowError(raw, "Escrow failed: invalid token ID."));
+      return;
+    }
+
+    const connectedBuyer = (await getConnectedAddress()).toLowerCase();
+    if (connectedBuyer === String(derivedSeller).toLowerCase()) {
+      setEscrowStatusText(
+        "Escrow requires two wallets. Switch to a buyer wallet different from seller " + truncateAddress(derivedSeller) + "."
+      );
       return;
     }
 
@@ -288,11 +542,13 @@ export default function TransferPage() {
     try {
       const { receipt, escrowId: createdEscrowId } = await createEscrowSale(
         Number(escrowTokenId),
-        escrowSeller,
+        derivedSeller,
         escrowAmountEth
       );
 
+      setEscrowSeller(derivedSeller);
       setEscrowId(String(createdEscrowId));
+      setEscrowStep(2);
       setEscrowStatusText(
         "Escrow created (ID " +
         createdEscrowId +
@@ -311,9 +567,118 @@ export default function TransferPage() {
         );
       }
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Escrow creation failed.");
+      const raw = extractReadableError(error, "Escrow creation failed.");
+      setEscrowStatusText(mapEscrowError(raw, "Escrow creation failed."));
     } finally {
       setEscrowLoading(false);
+    }
+  }
+
+  async function onAutoFillTokenId() {
+    setTokenLookupLoading(true);
+    try {
+      const connected = await getConnectedAddress();
+      const walletsToTry = [
+        currentOwner,
+        recordState?.record?.artisan,
+        connected
+      ].filter(Boolean);
+
+      const uniqueWallets = Array.from(new Set(walletsToTry.map((addr) => String(addr).toLowerCase())));
+
+      let resolvedTokenId = 0;
+      let matchedWallet = "";
+
+      for (const lowerWallet of uniqueWallets) {
+        const originalWallet = walletsToTry.find((addr) => String(addr).toLowerCase() === lowerWallet) || lowerWallet;
+        try {
+          const tokenId = await findLatestMintedTokenIdByRecipient(originalWallet);
+          if (tokenId > 0) {
+            resolvedTokenId = tokenId;
+            matchedWallet = String(originalWallet);
+            break;
+          }
+        } catch (_lookupError) {
+          // Keep trying next candidate wallet.
+        }
+      }
+
+      if (!resolvedTokenId) {
+        throw new Error(
+          "No ProductNFT mint found for current owner/artisan/connected wallet on Sepolia. Load product hash first or mint NFT in register flow."
+        );
+      }
+
+      setEscrowTokenId(String(resolvedTokenId));
+      setEscrowStatusText(
+        "Auto-filled NFT Token ID " +
+        resolvedTokenId +
+        " from latest mint for " +
+        truncateAddress(matchedWallet) +
+        "."
+      );
+    } catch (error) {
+      const raw = extractReadableError(error, "Could not auto-find token ID.");
+      setEscrowStatusText(raw || "Could not auto-find token ID.");
+    } finally {
+      setTokenLookupLoading(false);
+    }
+  }
+
+  async function onMintNftFromLoadedProduct() {
+    if (!recordState?.record) {
+      setEscrowStatusText("Load product by hash first.");
+      return;
+    }
+
+    const recipient = currentOwner;
+    if (!recipient || !String(recipient).startsWith("0x")) {
+      setEscrowStatusText("Could not determine owner wallet for NFT mint.");
+      return;
+    }
+
+    const cid = String(recordState.record.ipfsCid || "").trim();
+    if (!cid) {
+      setEscrowStatusText("Product metadata CID missing; cannot mint NFT twin from this record.");
+      return;
+    }
+
+    setMintingFromProduct(true);
+    setEscrowStatusText("Minting ProductNFT twin from loaded product...");
+
+    try {
+      const tokenUri = getIPFSUrl(cid);
+      const terroirForMint = Math.max(70, Number(currentTerroir || 70));
+      const mintResult = await mintProductTwin(recipient, tokenUri, terroirForMint, cid);
+
+      let tokenId = Number(mintResult?.tokenId || 0);
+      if (!tokenId) {
+        tokenId = await findLatestMintedTokenIdByRecipient(recipient);
+      }
+
+      if (tokenId > 0) {
+        setEscrowTokenId(String(tokenId));
+        setNftOwnerLive(recipient);
+        const mintTxHash =
+          mintResult?.receipt?.transactionHash ||
+          mintResult?.receipt?.hash ||
+          mintResult?.transactionHash ||
+          mintResult?.hash ||
+          "";
+
+        setEscrowStatusText(
+          "Minted ProductNFT Token ID " +
+          tokenId +
+          (mintTxHash ? ". Tx: https://sepolia.etherscan.io/tx/" + mintTxHash : ".")
+        );
+      } else {
+        setEscrowStatusText("NFT mint sent, but token ID could not be resolved. Click 'Use Latest Minted Token ID'.");
+      }
+    } catch (error) {
+      const raw = extractReadableError(error, "Could not mint ProductNFT twin.");
+      setEscrowStatusText(raw || "Could not mint ProductNFT twin.");
+    } finally {
+      setMintingFromProduct(false);
     }
   }
 
@@ -337,18 +702,29 @@ export default function TransferPage() {
 
   async function onMarkShipped() {
     if (!escrowId) {
-      setEscrowStatusText("Enter escrow ID.");
+      setEscrowStatusText("Escrow ID is missing. Create escrow first.");
       return;
     }
 
     setEscrowLoading(true);
-    setEscrowStatusText("Marking escrow as shipped...");
+    setEscrowStatusText("Approving token and marking escrow as shipped...");
     try {
+      try {
+        await getProductNftOwner(Number(escrowTokenId));
+      } catch (error) {
+        const raw = extractReadableError(error, "Invalid token ID.");
+        setEscrowStatusText(mapEscrowError(raw, "Could not mark shipped."));
+        return;
+      }
+
+      await approveEscrowForToken(Number(escrowTokenId));
       await markEscrowShipped(Number(escrowId));
       await loadEscrow(escrowId);
+      setEscrowStep(3);
       setEscrowStatusText("Escrow marked as shipped.");
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Could not mark shipped.");
+      const raw = extractReadableError(error, "Could not mark shipped.");
+      setEscrowStatusText(mapEscrowError(raw, "Could not mark shipped."));
     } finally {
       setEscrowLoading(false);
     }
@@ -356,56 +732,53 @@ export default function TransferPage() {
 
   async function onConfirmEscrow() {
     if (!escrowId) {
-      setEscrowStatusText("Enter escrow ID.");
+      setEscrowStatusText("Escrow ID is missing. Create escrow first.");
       return;
     }
 
     setEscrowLoading(true);
-    setEscrowStatusText("Confirming delivery and releasing escrow funds...");
+    setEscrowStatusText("Validating escrow state and buyer wallet...");
     try {
+      const id = Number(escrowId);
+      const details = await getEscrowDetails(id);
+      const connectedAddress = (await getConnectedAddress()).toLowerCase();
+
+      if (connectedAddress !== String(details.buyer || "").toLowerCase()) {
+        setEscrowStatusText(
+          "Confirm failed: switch to buyer wallet " + truncateAddress(details.buyer) + " used at escrow creation."
+        );
+        return;
+      }
+
+      if (Number(details.status) !== 2) {
+        setEscrowStatusText(
+          "Confirm failed: escrow status is " +
+          getEscrowStatusLabel(details.status) +
+          ". Seller must mark shipped first."
+        );
+        return;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      if (Number(details.confirmDeadline || 0) > 0 && now > Number(details.confirmDeadline)) {
+        setEscrowStatusText("Confirm failed: confirmation window expired for this escrow.");
+        return;
+      }
+
+      setEscrowStatusText("Confirming delivery and releasing escrow funds...");
       await confirmEscrowReceived(Number(escrowId));
       await loadEscrow(escrowId);
+      setEscrowStep(4);
       setEscrowStatusText("Escrow completed. Funds settled and NFT transferred.");
+      try {
+        const liveOwner = await getProductNftOwner(Number(details.tokenId));
+        setNftOwnerLive(liveOwner);
+      } catch (_ownerError) {
+        setNftOwnerLive("");
+      }
     } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Could not confirm receipt.");
-    } finally {
-      setEscrowLoading(false);
-    }
-  }
-
-  async function onCancelEscrow() {
-    if (!escrowId) {
-      setEscrowStatusText("Enter escrow ID.");
-      return;
-    }
-
-    setEscrowLoading(true);
-    setEscrowStatusText("Attempting escrow cancellation...");
-    try {
-      await cancelEscrowExpired(Number(escrowId));
-      await loadEscrow(escrowId);
-      setEscrowStatusText("Escrow cancelled and refunded.");
-    } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Could not cancel escrow.");
-    } finally {
-      setEscrowLoading(false);
-    }
-  }
-
-  async function onRaiseDispute() {
-    if (!escrowId) {
-      setEscrowStatusText("Enter escrow ID.");
-      return;
-    }
-
-    setEscrowLoading(true);
-    setEscrowStatusText("Raising escrow dispute...");
-    try {
-      await raiseEscrowDispute(Number(escrowId), escrowDisputeReason);
-      await loadEscrow(escrowId);
-      setEscrowStatusText("Dispute raised. Await arbitrator resolution.");
-    } catch (error) {
-      setEscrowStatusText(error?.shortMessage || error?.message || "Could not raise dispute.");
+      const raw = extractReadableError(error, "Could not confirm receipt.");
+      setEscrowStatusText(mapEscrowError(raw, "Could not confirm receipt."));
     } finally {
       setEscrowLoading(false);
     }
@@ -437,13 +810,14 @@ export default function TransferPage() {
       <div className="grid gap-2">
         <h1 className="m-0 text-3xl font-bold text-[#20473d]">Transfer Product Ownership</h1>
         <p className="m-0 text-[#49665e]">Transfer ownership with quadratic royalty and terroir impact preview.</p>
+        <p className="m-0 text-sm text-[#577]">Network: Sepolia. Amount fields use Sepolia ETH (testnet), not mainnet ETH.</p>
       </div>
 
       <Card className="max-w-4xl">
         <CardHeader className="pb-2">
           <CardTitle>Escrow Transfer (Recommended)</CardTitle>
           <CardDescription>
-            Buyer creates escrow, seller marks shipped, buyer confirms delivery to release funds and transfer NFT.
+            Minimal demo flow: create escrow → mark shipped → confirm received.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -458,13 +832,27 @@ export default function TransferPage() {
               placeholder="NFT Token ID"
             />
 
-            <Input
+            <Button
               suppressHydrationWarning
-              required
-              value={escrowSeller}
-              onChange={(e) => setEscrowSeller(e.target.value)}
-              placeholder="Seller wallet (0x...)"
-            />
+              type="button"
+              variant="outline"
+              className="w-fit"
+              disabled={tokenLookupLoading || escrowLoading}
+              onClick={onAutoFillTokenId}
+            >
+              {tokenLookupLoading ? "Looking up token..." : "Use Latest Minted Token ID"}
+            </Button>
+
+            <Button
+              suppressHydrationWarning
+              type="button"
+              variant="outline"
+              className="w-fit"
+              disabled={mintingFromProduct || escrowLoading || !recordState?.record}
+              onClick={onMintNftFromLoadedProduct}
+            >
+              {mintingFromProduct ? "Minting NFT..." : "Mint NFT From Loaded Product"}
+            </Button>
 
             <Input
               suppressHydrationWarning
@@ -474,55 +862,35 @@ export default function TransferPage() {
               step="0.0001"
               value={escrowAmountEth}
               onChange={(e) => setEscrowAmountEth(e.target.value)}
-              placeholder="Escrow amount (ETH)"
+              placeholder="Price (Sepolia ETH)"
             />
 
-            <Button suppressHydrationWarning type="submit" disabled={escrowLoading} className="w-fit">
-              {escrowLoading ? "Working..." : "Create Escrow"}
-            </Button>
-
-            <div className="flex flex-wrap gap-2">
-              <Button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onApproveTokenForEscrow} variant="secondary">
-                Approve Token for Escrow
-              </Button>
-              <Button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onMarkShipped} variant="secondary">
-                Mark Shipped
-              </Button>
-              <Button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onConfirmEscrow} variant="secondary">
-                Confirm Received
-              </Button>
-              <Button suppressHydrationWarning type="button" disabled={escrowLoading} onClick={onCancelEscrow} variant="secondary">
-                Cancel Expired
-              </Button>
+            <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3 text-sm text-[#466]">
+              <p className="m-0">Seller wallet (auto): {truncateAddress(currentOwner || escrowSeller)}</p>
+              {escrowId && <p className="m-0 mt-1">Escrow ID (auto): {escrowId}</p>}
             </div>
 
-            <Input
-              suppressHydrationWarning
-              value={escrowId}
-              onChange={(e) => setEscrowId(e.target.value)}
-              placeholder="Escrow ID"
-            />
+            {escrowStep === 1 && (
+              <Button suppressHydrationWarning type="submit" disabled={escrowLoading} className="w-fit">
+                {escrowLoading ? "Working..." : "Create Escrow"}
+              </Button>
+            )}
 
-            <Button
-              suppressHydrationWarning
-              type="button"
-              disabled={escrowLoading || !escrowId}
-              onClick={() => loadEscrow(escrowId)}
-              variant="secondary"
-              className="w-fit"
-            >
-              Load Escrow
-            </Button>
+            {escrowStep === 2 && (
+              <Button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onMarkShipped} variant="secondary" className="w-fit">
+                {escrowLoading ? "Working..." : "Mark Shipped"}
+              </Button>
+            )}
 
-            <Input
-              suppressHydrationWarning
-              value={escrowDisputeReason}
-              onChange={(e) => setEscrowDisputeReason(e.target.value)}
-              placeholder="Dispute reason"
-            />
-            <Button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onRaiseDispute} variant="secondary" className="w-fit">
-              Raise Dispute
-            </Button>
+            {escrowStep === 3 && (
+              <Button suppressHydrationWarning type="button" disabled={escrowLoading || !escrowId} onClick={onConfirmEscrow} variant="secondary" className="w-fit">
+                {escrowLoading ? "Working..." : "Confirm Received"}
+              </Button>
+            )}
+
+            {escrowStep >= 4 && (
+              <Badge variant="default" className="w-fit">Escrow Completed</Badge>
+            )}
 
             {escrowStatusText && <p className="m-0 text-[#355]">{escrowStatusText}</p>}
 
@@ -582,6 +950,13 @@ export default function TransferPage() {
               <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
                 <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">Current Owner</p>
                 <p className="m-0 font-mono text-base font-medium text-[#20473d]">{truncateAddress(currentOwner)}</p>
+                <p className="m-0 mt-1 text-xs text-[#577]">(Provenance registry owner)</p>
+              </div>
+
+              <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
+                <p className="m-0 text-xs font-semibold uppercase tracking-wide text-[#607b72]">NFT Owner (Live)</p>
+                <p className="m-0 font-mono text-base font-medium text-[#20473d]">{truncateAddress(nftOwnerLive)}</p>
+                <p className="m-0 mt-1 text-xs text-[#577]">Updated by escrow completion</p>
               </div>
 
               <div className="rounded-xl border border-[#dce8e3] bg-[#f8fcfb] p-3">
@@ -624,7 +999,7 @@ export default function TransferPage() {
                   step="0.0001"
                   value={paymentEth}
                   onChange={(e) => setPaymentEth(e.target.value)}
-                  placeholder="Buyer payment (ETH)"
+                  placeholder="Buyer payment (Sepolia ETH)"
                 />
 
                 <Card className="border-[#dbe9e3] bg-[#f9fcfb]">
