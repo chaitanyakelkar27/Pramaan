@@ -384,6 +384,36 @@ function normalizeLegacyArtisanRecord(record) {
     };
 }
 
+function normalizeCurrentArtisanRecord(record, fallbackAddress) {
+    if (!record) {
+        return emptyArtisanRecord(fallbackAddress);
+    }
+
+    const wallet = record?.wallet || record?.[0] || fallbackAddress;
+    const name = record?.name ?? record?.[1] ?? "";
+    const craft = record?.craft ?? record?.[2] ?? "";
+    const giRegion = record?.giRegion ?? record?.[3] ?? "";
+    const registeredAt = BigInt(record?.registeredAt ?? record?.[4] ?? 0);
+    const isAadhaarVerified = Boolean(record?.isAadhaarVerified ?? record?.[5] ?? false);
+    const isFraudulent = Boolean(record?.isFraudulent ?? record?.[6] ?? false);
+    const reputationScore = BigInt(record?.reputationScore ?? record?.[7] ?? 0);
+    const lockedReputation = BigInt(record?.lockedReputation ?? record?.[8] ?? 0);
+    const royaltyPenaltyBps = BigInt(record?.royaltyPenaltyBps ?? record?.[9] ?? 0);
+
+    return {
+        wallet,
+        name,
+        craft,
+        giRegion,
+        registeredAt,
+        isAadhaarVerified,
+        isFraudulent,
+        reputationScore,
+        lockedReputation,
+        royaltyPenaltyBps
+    };
+}
+
 function emptyArtisanRecord(address) {
     return {
         wallet: address,
@@ -503,12 +533,14 @@ export async function getArtisan(address) {
     assertConfiguredAddress(ARTISAN_REGISTRY_ADDRESS, "ARTISAN_REGISTRY_ADDRESS");
 
     try {
-        return await readContract(config, {
+        const currentRecord = await readContract(config, {
             address: ARTISAN_REGISTRY_ADDRESS,
             abi: ARTISAN_ABI,
             functionName: "getArtisan",
             args: [address]
         });
+
+        return normalizeCurrentArtisanRecord(currentRecord, address);
     } catch (error) {
         if (!isAbiDecodeMismatchError(error)) {
             throw error;
